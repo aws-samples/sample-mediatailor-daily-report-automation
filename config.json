@@ -11,6 +11,7 @@
   "recipients": [
     "subinh@amazon.com"
   ],
+  "sender_email": "subinh@amazon.com",
   "schedule": {
     "hour": "16",
     "minute": "0"

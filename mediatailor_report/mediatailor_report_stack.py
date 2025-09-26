@@ -22,11 +22,12 @@ class MediaTailorReportStack(Stack):
         with open(config_path, 'r') as f:
             config = json.load(f)
         
-        from_email = config['recipients'][0]  # Use first recipient as sender
+        # Use sender email from config
+        sender_email = config.get('sender_email', config['recipients'][0])
         
         # SES Email Identity
         email_identity = ses.EmailIdentity(self, "SenderEmailIdentity",
-            identity=ses.Identity.email(from_email)
+            identity=ses.Identity.email(sender_email)
         )
 
         # Lambda function using Docker image
@@ -34,8 +35,8 @@ class MediaTailorReportStack(Stack):
             code=_lambda.DockerImageCode.from_image_asset("lambda"),
             timeout=Duration.minutes(5),
             memory_size=512,
+            architecture=_lambda.Architecture.ARM_64,
             environment={
-                "FROM_EMAIL": from_email,
                 "REPORT_CONFIG": json.dumps(config)
             }
         )

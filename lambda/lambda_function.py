@@ -234,11 +234,15 @@ def send_email_with_pdf(pdf_data: bytes, recipients: List[str]):
         print("No recipients configured")
         return
     
+    # Load configuration
+    config = json.loads(os.environ.get('REPORT_CONFIG', '{}'))
+    sender_email = config.get('sender_email', f"noreply@{recipients[0].split('@')[1]}")
+    
     try:
         # Create multipart message
         msg = MIMEMultipart()
         msg['Subject'] = f'MediaTailor Daily Report - {datetime.now().strftime("%Y-%m-%d")}'
-        msg['From'] = os.environ.get('FROM_EMAIL')
+        msg['From'] = f"MediaTailor Reports <{sender_email}>"
         msg['To'] = ', '.join(recipients)
         
         # Email body
@@ -263,9 +267,9 @@ def send_email_with_pdf(pdf_data: bytes, recipients: List[str]):
                                 filename=f'mediatailor-report-{datetime.now().strftime("%Y-%m-%d")}.pdf')
         msg.attach(pdf_attachment)
         
-        # Send via SES
+        # Send via SES using configured sender
         ses.send_raw_email(
-            Source=os.environ.get('FROM_EMAIL'),
+            Source=sender_email,
             Destinations=recipients,
             RawMessage={'Data': msg.as_string()}
         )

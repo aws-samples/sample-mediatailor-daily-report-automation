@@ -10,12 +10,14 @@ For detailed architecture information, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 1. **Install CDK**: `npm install -g aws-cdk`
 2. **Verify SES Email**: Verify your sender email in AWS SES console
-3. **Update Configuration**: Edit `config.json` with your MediaTailor configurations
+3. **Update Configuration**: Edit `config.json` with your MediaTailor configurations and sender email
 4. **Deploy**: Run `./deploy.sh [region]`
    - Example: `./deploy.sh us-east-1`
    - Default region: `us-east-1`
 
 ## Configuration
+
+**Required:** Verify your sender email in AWS SES console before deployment.
 
 Edit `config.json`:
 
@@ -28,9 +30,17 @@ Edit `config.json`:
     "Avail.FilledDuration",
     "AdDecisionServer.FillRate"
   ],
-  "recipients": ["email@example.com"]
+  "recipients": ["email@example.com"],
+  "sender_email": "noreply@example.com"
 }
 ```
+
+**Configuration Parameters:**
+- `mediatailor_configs`: List of MediaTailor configuration names
+- `metrics`: CloudWatch metrics to include in reports
+- `recipients`: Email addresses to receive reports
+- `sender_email`: Email address to send reports from (must be verified in SES)
+- `schedule`: Cron schedule for daily reports
 
 ## Available Metrics
 

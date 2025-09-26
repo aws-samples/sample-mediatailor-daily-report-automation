@@ -30,8 +30,8 @@ pip install -r requirements.txt
 
 # Bootstrap CDK (if first time)
 echo "Bootstrapping CDK (if needed)..."
-cdk bootstrap --region $REGION
+cdk bootstrap aws://$(aws sts get-caller-identity --query Account --output text)/$REGION
 
 # Deploy stack
 echo "Deploying stack..."
-cdk deploy --region $REGION --require-approval never
+cdk deploy --context region=$REGION --require-approval never

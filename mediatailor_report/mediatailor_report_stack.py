@@ -60,8 +60,12 @@ class MediaTailorReportStack(Stack):
         ))
 
         # EventBridge rule for daily trigger
+        schedule_config = config.get('schedule', {'hour': '16', 'minute': '0'})
         rule = events.Rule(self, "DailyTrigger",
-            schedule=events.Schedule.cron(minute="0", hour="8")  # 8 AM UTC daily
+            schedule=events.Schedule.cron(
+                minute=schedule_config['minute'], 
+                hour=schedule_config['hour']
+            )
         )
 
         rule.add_target(targets.LambdaFunction(lambda_function))

@@ -1,6 +1,12 @@
 #!/bin/bash
 
 # Deploy MediaTailor Daily Report with CDK
+# Usage: ./deploy.sh [region]
+# Example: ./deploy.sh us-east-1
+
+# Set region (default to us-east-1 if not provided)
+REGION=${1:-us-east-1}
+echo "Deploying to region: $REGION"
 
 # Check if CDK CLI is installed
 if ! command -v cdk &> /dev/null; then
@@ -24,8 +30,8 @@ pip install -r requirements.txt
 
 # Bootstrap CDK (if first time)
 echo "Bootstrapping CDK (if needed)..."
-cdk bootstrap
+cdk bootstrap --region $REGION
 
 # Deploy stack
 echo "Deploying stack..."
-cdk deploy --require-approval never
+cdk deploy --region $REGION --require-approval never

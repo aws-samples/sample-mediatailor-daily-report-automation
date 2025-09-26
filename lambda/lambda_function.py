@@ -22,6 +22,11 @@ def lambda_handler(event, context):
     # Load configuration
     config = json.loads(os.environ.get('REPORT_CONFIG', '{}'))
     
+    # Check if this is a test invocation
+    test_mode = event.get('test', False)
+    if test_mode:
+        print("Running in test mode - report will be generated and sent")
+    
     # Get metrics for all configurations
     report_data = {}
     for config_name in config.get('mediatailor_configs', []):
@@ -32,7 +37,11 @@ def lambda_handler(event, context):
     pdf_data = generate_pdf_report(report_data)
     send_email_with_pdf(pdf_data, config.get('recipients', []))
     
-    return {'statusCode': 200, 'body': 'Report sent successfully'}
+    return {
+        'statusCode': 200, 
+        'body': 'Report sent successfully',
+        'reportData': report_data if test_mode else None
+    }
 
 def get_mediatailor_metrics(config_name: str, metrics: List[str]) -> Dict:
     """Query CloudWatch metrics for a MediaTailor configuration"""

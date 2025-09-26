@@ -2,12 +2,18 @@
 
 Automated daily email reports for MediaTailor ad-fill rate metrics.
 
+## Architecture
+
+For detailed architecture information, see [ARCHITECTURE.md](ARCHITECTURE.md).
+
 ## Setup
 
 1. **Install CDK**: `npm install -g aws-cdk`
 2. **Verify SES Email**: Verify your sender email in AWS SES console
 3. **Update Configuration**: Edit `config.json` with your MediaTailor configurations
-4. **Deploy**: Run `./deploy.sh`
+4. **Deploy**: Run `./deploy.sh [region]`
+   - Example: `./deploy.sh us-east-1`
+   - Default region: `us-east-1`
 
 ## Configuration
 
@@ -138,24 +144,151 @@ The daily report helps you:
 
 ## Schedule
 
-Reports are sent daily at 8 AM UTC. Modify the cron expression in `template.yaml` to change timing.
+Reports are sent daily at the configured time. Modify the schedule in `config.json`:
 
-## Manual Testing
+```json
+{
+  "schedule": {
+    "hour": "16",
+    "minute": "0"
+  }
+}
+```
 
+**Time Examples:**
+- `"hour": "16", "minute": "0"` = 12:00 AM UTC+8 (16:00 UTC)
+- `"hour": "8", "minute": "0"` = 8:00 AM UTC
+- `"hour": "0", "minute": "30"` = 12:30 AM UTC
+
+## Testing
+
+### Manual Testing
+
+**Basic Test:**
 ```bash
 # Get function name from CDK output
 aws lambda invoke --function-name MediaTailorReportStack-MediaTailorReportFunction output.json
 ```
 
+**Test with Debug Info:**
+```bash
+# Test with additional logging
+aws lambda invoke --function-name MediaTailorReportStack-MediaTailorReportFunction \
+  --payload '{"test": true}' \
+  output.json
+```
+
+**View Results:**
+```bash
+# Check the output
+cat output.json
+
+# Check CloudWatch logs
+aws logs describe-log-groups --log-group-name-prefix "/aws/lambda/MediaTailorReportStack"
+```
+
+### Testing Methods
+
+#### 1. End-to-End Testing
+- **Purpose**: Validate complete report generation and delivery
+- **Method**: Manual Lambda invoke
+- **Expected**: PDF report sent to configured recipients
+- **Validation**: Check email inbox and CloudWatch logs
+
+#### 2. Debug Mode Testing
+- **Purpose**: Detailed logging and response data
+- **Method**: Invoke with `{"test": true}` payload
+- **Expected**: Additional logging and metric data in response
+- **Use Case**: Troubleshooting and development
+
+#### 3. Configuration Testing
+- **Purpose**: Validate different MediaTailor configurations
+- **Method**: Update `config.json` with test configurations
+- **Expected**: Reports for each configured MediaTailor setup
+- **Validation**: Verify metrics for each configuration
+
+#### 4. Schedule Testing
+- **Purpose**: Verify EventBridge trigger functionality
+- **Method**: Wait for scheduled execution or modify cron
+- **Expected**: Automatic report generation at scheduled time
+- **Monitoring**: CloudWatch Events and Lambda logs
+
+### Test Scenarios
+
+#### Scenario 1: Single Configuration
+```json
+{
+  "mediatailor_configs": ["test-config-1"],
+  "recipients": ["test@example.com"]
+}
+```
+
+#### Scenario 2: Multiple Configurations
+```json
+{
+  "mediatailor_configs": ["config-1", "config-2", "config-3"],
+  "recipients": ["team@example.com"]
+}
+```
+
+#### Scenario 3: Different Time Zones
+```json
+{
+  "schedule": {
+    "hour": "8",
+    "minute": "30"
+  }
+}
+```
+
+### Validation Checklist
+
+- [ ] Lambda function executes without errors
+- [ ] CloudWatch metrics are retrieved successfully
+- [ ] PDF report is generated with correct data
+- [ ] Email is sent to all configured recipients
+- [ ] Report contains expected metrics and formatting
+- [ ] Status indicators show correct thresholds
+- [ ] Weighted fill rate calculations are accurate
+- [ ] Schedule triggers function at correct time
+
+### Troubleshooting Tests
+
+#### Missing Metrics Test
+- **Setup**: Configure non-existent MediaTailor config
+- **Expected**: Graceful error handling, partial report generation
+- **Validation**: Check error logs, ensure other configs still process
+
+#### SES Delivery Test
+- **Setup**: Use unverified email address
+- **Expected**: SES error in logs, function continues
+- **Validation**: Check SES bounce/complaint notifications
+
+#### Memory/Timeout Test
+- **Setup**: Configure many MediaTailor configs
+- **Expected**: Function completes within timeout limits
+- **Validation**: Monitor Lambda duration and memory usage
+
 ## CDK Commands
 
 ```bash
 # Synthesize CloudFormation template
-cdk synth
+cdk synth [--region us-east-1]
 
 # Deploy stack
-cdk deploy
+cdk deploy [--region us-east-1]
 
 # Destroy stack
-cdk destroy
+cdk destroy [--region us-east-1]
 ```
+
+**Note:** The `--region` flag is optional. If not specified, CDK will use your default AWS region.
+
+## Testing Best Practices
+
+1. **Start Small**: Test with single configuration first
+2. **Verify SES**: Ensure sender email is verified in SES
+3. **Check Permissions**: Validate IAM roles have required permissions
+4. **Monitor Logs**: Always check CloudWatch logs for detailed execution info
+5. **Test Schedule**: Verify EventBridge rule triggers at expected time
+6. **Validate Data**: Compare report metrics with CloudWatch console

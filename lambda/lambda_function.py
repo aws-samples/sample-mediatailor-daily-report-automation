@@ -157,8 +157,7 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles) -> List
         'Avail.FillRate (Weighted)': 'Duration-weighted fill rate - More accurate than simple average (%)',
         'Avail.Duration': 'Total planned ad time (milliseconds)',
         'Avail.FilledDuration': 'Total filled ad time (milliseconds)',
-        'AdDecisionServer.FillRate': 'Fill rate from Ad Decision Server (%)',
-
+        'AdDecisionServer.FillRate': 'Fill rate from Ad Decision Server (%)'
     }
     
     # Create table data
@@ -175,6 +174,10 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles) -> List
         else:
             display_metrics[metric] = data
     
+    # Define metric types
+    RATE_METRICS = ['Avail.FillRate (Avg)', 'Avail.FillRate (Weighted)', 'AdDecisionServer.FillRate']
+    DURATION_METRICS = ['Avail.Duration', 'Avail.FilledDuration']
+    
     for metric in metric_order:
         if metric not in display_metrics:
             continue
@@ -182,13 +185,10 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles) -> List
         data = display_metrics[metric]
         
         if 'error' in data:
-            table_data.append([metric, metric_descriptions.get(metric, ''), f"Error: {data['error']}", "❌ Error"])
+            table_data.append([metric, metric_descriptions.get(metric, ''), f"Error: {data['error']}", "Error"])
             continue
             
         # Format value based on metric type
-        RATE_METRICS = ['Avail.FillRate (Avg)', 'Avail.FillRate (Weighted)', 'AdDecisionServer.FillRate']
-        DURATION_METRICS = ['Avail.Duration', 'Avail.FilledDuration']
-        
         avg = data.get('average', 0)
         sum_val = data.get('sum', 0)
         
@@ -199,19 +199,27 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles) -> List
         else:
             value = str(avg)
         
-        # Status
-        status = "✅ Good"
-        if 'FillRate' in metric and avg < 80:
-            status = "⚠️ Low"
-        elif 'FillRate' in metric and avg < 70:
-            status = "❌ Critical"
+        # Status determination
+        status_text = "Good"
+        
+        if 'FillRate' in metric:
+            if avg == 0:
+                status_text = "No Data"
+            elif avg < 70:
+                status_text = "Critical"
+            elif avg < 80:
+                status_text = "Low"
+        elif metric in DURATION_METRICS and sum_val == 0:
+            status_text = "No Data"
         
         description = metric_descriptions.get(metric, '')
-        table_data.append([metric, description, value, status])
+        table_data.append([metric, description, value, status_text])
     
-    # Create and style table
+    # Create and style table with color-coded status
     table = Table(table_data, colWidths=[2*inch, 2.5*inch, 1*inch, 1*inch])
-    table.setStyle(TableStyle([
+    
+    # Base table style
+    table_style = [
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f8f9fa')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
         ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
@@ -220,7 +228,28 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles) -> List
         ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
         ('BACKGROUND', (0, 1), (-1, -1), colors.white),
         ('GRID', (0, 0), (-1, -1), 1, colors.black)
-    ]))
+    ]
+    
+    # Add color coding for status column
+    for i, row in enumerate(table_data[1:], 1):  # Skip header row
+        status = row[3]
+        if status == "Good":
+            table_style.append(('TEXTCOLOR', (3, i), (3, i), colors.green))
+            table_style.append(('FONTNAME', (3, i), (3, i), 'Helvetica-Bold'))
+        elif status == "Low":
+            table_style.append(('TEXTCOLOR', (3, i), (3, i), colors.orange))
+            table_style.append(('FONTNAME', (3, i), (3, i), 'Helvetica-Bold'))
+        elif status == "Critical":
+            table_style.append(('TEXTCOLOR', (3, i), (3, i), colors.red))
+            table_style.append(('FONTNAME', (3, i), (3, i), 'Helvetica-Bold'))
+        elif status == "No Data":
+            table_style.append(('TEXTCOLOR', (3, i), (3, i), colors.grey))
+            table_style.append(('FONTNAME', (3, i), (3, i), 'Helvetica-Oblique'))
+        elif status == "Error":
+            table_style.append(('TEXTCOLOR', (3, i), (3, i), colors.red))
+            table_style.append(('FONTNAME', (3, i), (3, i), 'Helvetica-Bold'))
+    
+    table.setStyle(TableStyle(table_style))
     
     elements.append(table)
     return elements

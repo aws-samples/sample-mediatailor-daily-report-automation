@@ -1,0 +1,14 @@
+{
+  "mediatailor_configs": [
+    "MediaPrimaEventGroup1"
+  ],
+  "metrics": [
+    "Avail.FillRate",
+    "Avail.Duration",
+    "Avail.FilledDuration",
+    "AdDecisionServer.FillRate"
+  ],
+  "recipients": [
+    "subinh@amazon.com"
+  ]
+}

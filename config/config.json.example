@@ -1,6 +1,7 @@
 {
   "mediatailor_configs": [
-    "MediaPrimaEventGroup1"
+    "your-mediatailor-config-1",
+    "your-mediatailor-config-2"
   ],
   "metrics": [
     "Avail.FillRate",
@@ -9,11 +10,12 @@
     "AdDecisionServer.FillRate"
   ],
   "recipients": [
-    "subinh@amazon.com"
+    "user1@example.com",
+    "user2@example.com"
   ],
-  "sender_email": "subinh@amazon.com",
+  "sender_email": "noreply@example.com",
   "schedule": {
-    "hour": "16",
+    "hour": "9",
     "minute": "0"
   }
 }

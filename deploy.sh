@@ -8,6 +8,15 @@
 REGION=${1:-us-east-1}
 echo "Deploying to region: $REGION"
 
+# Check if config.json exists
+if [ ! -f "config/config.json" ]; then
+    echo "Error: config/config.json not found!"
+    echo "Please copy config/config.json.example to config/config.json and update with your values."
+    exit 1
+fi
+
+echo "Configuration file found: config/config.json"
+
 # Check if CDK CLI is installed
 if ! command -v cdk &> /dev/null; then
     echo "CDK CLI not found. Install it first: npm install -g aws-cdk"

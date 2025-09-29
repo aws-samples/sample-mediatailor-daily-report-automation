@@ -11,7 +11,7 @@ aws lambda invoke --function-name MediaTailorReportStack-MediaTailorReportFuncti
 ### Test with Debug Info
 ```bash
 # Test with additional logging
-aws lambda invoke --function-name MediaTailorReportStack-MediaTailorReportFunction \
+aws lambda invoke --cli-binary-format raw-in-base64-out --function-name MediaTailorReportStack-MediaTailorReportFunction \
   --payload '{"test": true}' \
   output.json
 ```

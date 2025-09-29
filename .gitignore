@@ -1,6 +1,7 @@
-# CDK output
+# CDK
 cdk.out/
-*.zip
+*.swp
+*.swo
 
 # Python
 __pycache__/
@@ -23,42 +24,26 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
 
 # Virtual environments
-.env
-.venv
-env/
 venv/
+env/
 ENV/
-env.bak/
-venv.bak/
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
-*~
 
 # OS
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
+
+# Configuration files with sensitive data
+config/config.json
+output.json
 
 # Logs
 *.log
-
-# AWS
-.aws/
-
-# Node modules (if any)
-node_modules/
-
-# Temporary files
-*.tmp
-*.temp
-output.json

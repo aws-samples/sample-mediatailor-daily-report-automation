@@ -164,7 +164,7 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles) -> List
     table_data = [['Metric', 'Description', 'Value', 'Status']]
     
     # Process metrics in specific order
-    metric_order = ['Avail.FillRate', 'Avail.FillRate (Weighted)', 'Avail.Duration', 'Avail.FilledDuration', 'AdDecisionServer.FillRate']
+    metric_order = ['Avail.FillRate (Avg)', 'Avail.FillRate (Weighted)', 'Avail.Duration', 'Avail.FilledDuration', 'AdDecisionServer.FillRate']
     
     # Rename Avail.FillRate to Avail.FillRate (Avg) for display
     display_metrics = {}

@@ -109,27 +109,105 @@ def generate_pdf_report(report_data: Dict) -> bytes:
     from io import BytesIO
     buffer = BytesIO()
     
-    doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch)
+    doc = SimpleDocTemplate(
+        buffer, 
+        pagesize=letter, 
+        topMargin=1*inch, 
+        bottomMargin=0.75*inch,
+        leftMargin=0.75*inch,
+        rightMargin=0.75*inch
+    )
     styles = getSampleStyleSheet()
     story = []
     
-    # Title
+    # Professional header with proper spacing
+    header_style = ParagraphStyle(
+        'Header',
+        parent=styles['Normal'],
+        fontSize=9,
+        textColor=colors.HexColor('#6C757D'),
+        alignment=2,  # Right align
+        spaceAfter=20
+    )
+    
+    header = Paragraph(f"Generated on {datetime.now().strftime('%B %d, %Y at %I:%M %p UTC')}", header_style)
+    story.append(header)
+    story.append(Spacer(1, 0.2*inch))
+    
+    # Main title with professional styling
     title_style = ParagraphStyle(
         'CustomTitle',
         parent=styles['Heading1'],
-        fontSize=18,
+        fontSize=22,
         textColor=colors.HexColor('#232F3E'),
+        alignment=1,  # Center
+        spaceAfter=12,
+        borderWidth=2,
+        borderColor=colors.HexColor('#FF9900'),
+        borderPadding=12,
+        backColor=colors.HexColor('#F8F9FA')
+    )
+    
+    subtitle_style = ParagraphStyle(
+        'Subtitle',
+        parent=styles['Normal'],
+        fontSize=12,
+        textColor=colors.HexColor('#6C757D'),
+        alignment=1,  # Center
+        spaceAfter=20
+    )
+    
+    title = Paragraph("MediaTailor Daily Report", title_style)
+    subtitle = Paragraph(f"Performance Metrics for {datetime.now().strftime('%A, %B %d, %Y')}", subtitle_style)
+    
+    story.append(title)
+    story.append(Spacer(1, 0.15*inch))
+    story.append(subtitle)
+    story.append(Spacer(1, 0.25*inch))
+    
+    # Executive summary if multiple configurations
+    if len(report_data) > 1:
+        summary_style = ParagraphStyle(
+            'Summary',
+            parent=styles['Normal'],
+            fontSize=10,
+            textColor=colors.HexColor('#495057'),
+            leftIndent=20,
+            rightIndent=20,
+            spaceAfter=15,
+            borderWidth=1,
+            borderColor=colors.HexColor('#E5E5E5'),
+            borderPadding=10,
+            backColor=colors.HexColor('#F8F9FA')
+        )
+        
+        summary_text = f"This report covers {len(report_data)} MediaTailor configuration(s). Each section provides detailed metrics including fill rates, ad duration statistics, and system health indicators."
+        summary = Paragraph(summary_text, summary_style)
+        story.append(summary)
+        story.append(Spacer(1, 0.2*inch))
+    
+    # Generate sections for each configuration
+    for i, (config_name, metrics) in enumerate(report_data.items()):
+        if i > 0:  # Add page break between configurations if multiple
+            story.append(Spacer(1, 0.3*inch))
+        
+        story.extend(generate_pdf_config_section(config_name, metrics, styles))
+        
+        if i < len(report_data) - 1:  # Not the last configuration
+            story.append(Spacer(1, 0.25*inch))
+    
+    # Footer
+    footer_style = ParagraphStyle(
+        'Footer',
+        parent=styles['Normal'],
+        fontSize=8,
+        textColor=colors.HexColor('#6C757D'),
         alignment=1  # Center
     )
     
-    title = Paragraph(f"MediaTailor Daily Report - {datetime.now().strftime('%Y-%m-%d')}", title_style)
-    story.append(title)
     story.append(Spacer(1, 0.3*inch))
-    
-    # Generate sections for each configuration
-    for config_name, metrics in report_data.items():
-        story.extend(generate_pdf_config_section(config_name, metrics, styles))
-        story.append(Spacer(1, 0.2*inch))
+    footer = Paragraph("AWS MediaTailor Monitoring System | Confidential", footer_style)
+    story.append(footer)
     
     doc.build(story)
     buffer.seek(0)
@@ -140,27 +218,32 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles) -> List
     
     elements = []
     
-    # Configuration header
+    # Configuration header with professional styling
     config_style = ParagraphStyle(
         'ConfigHeader',
         parent=styles['Heading2'],
-        fontSize=14,
-        textColor=colors.HexColor('#1976d2')
+        fontSize=16,
+        textColor=colors.HexColor('#232F3E'),
+        spaceAfter=12,
+        borderWidth=1,
+        borderColor=colors.HexColor('#E5E5E5'),
+        borderPadding=8,
+        backColor=colors.HexColor('#F8F9FA')
     )
     
     elements.append(Paragraph(f"Configuration: {config_name}", config_style))
-    elements.append(Spacer(1, 0.1*inch))
+    elements.append(Spacer(1, 0.15*inch))
     
-    # Metric descriptions
+    # Metric descriptions with clearer explanations
     metric_descriptions = {
-        'Avail.FillRate (Avg)': 'Average fill rate across all ad avails (%)',
-        'Avail.FillRate (Weighted)': 'Duration-weighted fill rate - More accurate than simple average (%)',
-        'Avail.Duration': 'Total planned ad time (milliseconds)',
-        'Avail.FilledDuration': 'Total filled ad time (milliseconds)',
-        'AdDecisionServer.FillRate': 'Fill rate from Ad Decision Server (%)'
+        'Avail.FillRate (Avg)': 'Average across all ad breaks (many unfilled)',
+        'Avail.FillRate (Weighted)': 'Actual revenue performance (time-weighted)',
+        'Avail.Duration': 'Total ad inventory available',
+        'Avail.FilledDuration': 'Total ad time that generated revenue',
+        'AdDecisionServer.FillRate': 'ADS response rate per ad request'
     }
     
-    # Create table data
+    # Create table data with wrapped descriptions
     table_data = [['Metric', 'Description', 'Value', 'Status']]
     
     # Process metrics in specific order
@@ -185,7 +268,8 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles) -> List
         data = display_metrics[metric]
         
         if 'error' in data:
-            table_data.append([metric, metric_descriptions.get(metric, ''), f"Error: {data['error']}", "Error"])
+            error_desc = Paragraph(f"Error: {data['error'][:50]}...", styles['Normal'])
+            table_data.append([metric, metric_descriptions.get(metric, ''), error_desc, "Error"])
             continue
             
         # Format value based on metric type
@@ -195,63 +279,120 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles) -> List
         if metric in RATE_METRICS:
             value = f"{avg}%"
         elif metric in DURATION_METRICS:
-            value = f"{sum_val:,.0f} ms"
+            # Convert milliseconds to more appropriate units
+            seconds = sum_val / 1000
+            if seconds >= 3600:
+                hours = seconds / 3600
+                value = f"{hours:.1f}h ({seconds/60:.0f}min)"
+            elif seconds >= 60:
+                value = f"{seconds/60:.1f}min"
+            else:
+                value = f"{seconds:.1f}s"
         else:
             value = str(avg)
         
-        # Status determination
-        status_text = "Good"
+        # Status determination with better logic
+        status_text = "✓ Good"
         
         if 'FillRate' in metric:
             if avg == 0:
-                status_text = "No Data"
+                status_text = "⚪ No Data"
             elif avg < 70:
-                status_text = "Critical"
-            elif avg < 80:
-                status_text = "Low"
-        elif metric in DURATION_METRICS and sum_val == 0:
-            status_text = "No Data"
+                status_text = "🔴 Critical"
+            elif avg < 85:
+                status_text = "🟡 Low"
+        elif metric in DURATION_METRICS:
+            if sum_val == 0:
+                status_text = "⚪ No Data"
+            elif metric == 'Avail.Duration' and seconds > 7200:  # >2 hours seems high
+                status_text = "🟡 High Volume"
         
-        description = metric_descriptions.get(metric, '')
+        # Add data validation warning for suspicious values
+        if metric == 'Avail.FillRate (Avg)' and avg < 5 and 'Avail.FillRate (Weighted)' in display_metrics:
+            weighted_rate = display_metrics['Avail.FillRate (Weighted)'].get('average', 0)
+            if weighted_rate > 50:  # Large discrepancy suggests data issue
+                status_text = "⚠️ Check Data"
+        
+        # Wrap description in Paragraph for better formatting
+        description = Paragraph(metric_descriptions.get(metric, ''), styles['Normal'])
         table_data.append([metric, description, value, status_text])
     
-    # Create and style table with color-coded status
-    table = Table(table_data, colWidths=[2*inch, 2.5*inch, 1*inch, 1*inch])
+    # Create table with optimized column widths to prevent overflow
+    table = Table(table_data, colWidths=[1.8*inch, 2.8*inch, 1.2*inch, 1.2*inch])
     
-    # Base table style
+    # Professional table styling
     table_style = [
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f8f9fa')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+        # Header styling
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#232F3E')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 10),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('FONTSIZE', (0, 0), (-1, 0), 11),
+        ('FONTSIZE', (0, 1), (-1, -1), 9),
+        ('TOPPADDING', (0, 0), (-1, 0), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 10),
+        ('LEFTPADDING', (0, 0), (-1, -1), 8),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+        
+        # Body styling
         ('BACKGROUND', (0, 1), (-1, -1), colors.white),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8F9FA')]),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E5E5E5')),
+        ('OUTLINE', (0, 0), (-1, -1), 1, colors.HexColor('#232F3E')),
+        
+        # Value column alignment
+        ('ALIGN', (2, 1), (2, -1), 'RIGHT'),
+        ('ALIGN', (3, 1), (3, -1), 'CENTER'),
     ]
     
-    # Add color coding for status column
+    # Add color coding for status column with better styling
     for i, row in enumerate(table_data[1:], 1):  # Skip header row
         status = row[3]
-        if status == "Good":
-            table_style.append(('TEXTCOLOR', (3, i), (3, i), colors.green))
+        if "Good" in status:
+            table_style.append(('TEXTCOLOR', (3, i), (3, i), colors.HexColor('#28A745')))
             table_style.append(('FONTNAME', (3, i), (3, i), 'Helvetica-Bold'))
-        elif status == "Low":
-            table_style.append(('TEXTCOLOR', (3, i), (3, i), colors.orange))
+        elif "Low" in status:
+            table_style.append(('TEXTCOLOR', (3, i), (3, i), colors.HexColor('#FFC107')))
             table_style.append(('FONTNAME', (3, i), (3, i), 'Helvetica-Bold'))
-        elif status == "Critical":
-            table_style.append(('TEXTCOLOR', (3, i), (3, i), colors.red))
+        elif "Critical" in status:
+            table_style.append(('TEXTCOLOR', (3, i), (3, i), colors.HexColor('#DC3545')))
             table_style.append(('FONTNAME', (3, i), (3, i), 'Helvetica-Bold'))
-        elif status == "No Data":
-            table_style.append(('TEXTCOLOR', (3, i), (3, i), colors.grey))
-            table_style.append(('FONTNAME', (3, i), (3, i), 'Helvetica-Oblique'))
-        elif status == "Error":
-            table_style.append(('TEXTCOLOR', (3, i), (3, i), colors.red))
+        elif "No Data" in status:
+            table_style.append(('TEXTCOLOR', (3, i), (3, i), colors.HexColor('#6C757D')))
+        elif "Error" in status:
+            table_style.append(('TEXTCOLOR', (3, i), (3, i), colors.HexColor('#DC3545')))
             table_style.append(('FONTNAME', (3, i), (3, i), 'Helvetica-Bold'))
     
     table.setStyle(TableStyle(table_style))
     
     elements.append(table)
+    
+    # Add insights section for context
+    insights = generate_insights(display_metrics)
+    if insights:
+        elements.append(Spacer(1, 0.15*inch))
+        
+        insights_style = ParagraphStyle(
+            'Insights',
+            parent=styles['Normal'],
+            fontSize=9,
+            textColor=colors.HexColor('#495057'),
+            leftIndent=10,
+            spaceAfter=10,
+            borderWidth=1,
+            borderColor=colors.HexColor('#17A2B8'),
+            borderPadding=8,
+            backColor=colors.HexColor('#E7F3FF')
+        )
+        
+        insights_header = Paragraph("<b>Key Insights:</b>", insights_style)
+        elements.append(insights_header)
+        
+        for insight in insights:
+            insight_para = Paragraph(f"• {insight}", insights_style)
+            elements.append(insight_para)
+    
     return elements
 
 
@@ -307,3 +448,41 @@ def send_email_with_pdf(pdf_data: bytes, recipients: List[str]):
     except Exception as e:
         print(f"Error sending email: {e}")
         raise
+
+def generate_insights(metrics: Dict) -> List[str]:
+    """Generate contextual insights from metrics"""
+    insights = []
+    
+    # Check for fill rate discrepancy
+    avg_fill = metrics.get('Avail.FillRate (Avg)', {}).get('average', 0)
+    weighted_fill = metrics.get('Avail.FillRate (Weighted)', {}).get('average', 0)
+    
+    if abs(avg_fill - weighted_fill) > 20:
+        insights.append(f"Per-avail average ({avg_fill}%) vs time-weighted ({weighted_fill}%) - many short unfilled breaks but good overall monetization")
+        insights.append(f"MediaTailor creates many micro ad opportunities but fills the valuable longer slots effectively")
+    
+    # Check ad duration context
+    duration = metrics.get('Avail.Duration', {}).get('sum', 0)
+    filled_duration = metrics.get('Avail.FilledDuration', {}).get('sum', 0)
+    
+    if duration > 0:
+        duration_hours = duration / 1000 / 3600
+        if duration_hours > 1:
+            insights.append(f"Total ad inventory: {duration_hours:.1f}h - verify if this matches expected viewer sessions and ad frequency")
+        
+        # Calculate implied viewer hours
+        if duration_hours > 0:
+            # Assuming typical 6-8 minutes of ads per hour of content
+            implied_content_hours = duration_hours * 8  # Conservative estimate
+            insights.append(f"Implies ~{implied_content_hours:.1f}h of total content viewed (assuming 12-15% ad load)")
+        
+        if filled_duration > 0:
+            fill_efficiency = (filled_duration / duration) * 100
+            if fill_efficiency > 90:
+                insights.append("Excellent fill efficiency - inventory is well-monetized")
+            elif fill_efficiency < 60:
+                insights.append("Low fill efficiency - consider reviewing ad decisioning strategy")
+            
+            insights.append(f"Bottom line: {fill_efficiency:.1f}% of ad time generated revenue ({filled_duration/1000/60:.0f}min of {duration/1000/60:.0f}min)")
+    
+    return insights

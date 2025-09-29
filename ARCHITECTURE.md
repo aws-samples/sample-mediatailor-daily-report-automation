@@ -8,33 +8,35 @@ The MediaTailor Daily Report is a serverless solution that automatically generat
 
 ```mermaid
 flowchart TD
-    MT["🎬 AWS MediaTailor<br/>Configurations<br/>• Config-1<br/>• Config-2<br/>• Config-N"] 
-    CW["📊 Amazon CloudWatch<br/>Metrics Storage<br/>• Fill Rates<br/>• Durations<br/>• ADS Metrics"]
-    EB["⏰ Amazon EventBridge<br/>Daily Trigger<br/>Cron: 16:00 UTC<br/>(12 AM UTC+8)"]
+    MT["🎬 AWS MediaTailor<br/>Configurations"] 
+    CW["📊 Amazon CloudWatch<br/>Metrics Storage"]
     
-    LF["⚡ AWS Lambda Function<br/>MediaTailorReportFunction<br/>• Query Metrics<br/>• Generate PDF<br/>• Send Email"]
+    EB["⏰ Amazon EventBridge<br/>Scheduled Rule"]
     
-    SES["📧 Amazon SES<br/>Email Service<br/>• PDF Delivery<br/>• Multi Recipients"]
+    LF["⚡ AWS Lambda Function<br/>Docker Container"]
     
-    USERS["👥 Email Recipients<br/>• Operations Team<br/>• Management<br/>• Stakeholders"]
+    SES["📧 Amazon SES<br/>Email Service"]
+    
+    USERS["👥 Email Recipients"]
     
     MT -->|"Publishes Metrics"| CW
-    CW -->|"Stores Data"| EB
-    EB -->|"Triggers Daily"| LF
-    LF -->|"Queries Metrics"| CW
-    LF -->|"Sends Report"| SES
-    SES -->|"Delivers Email"| USERS
+    EB -->|"1️⃣ Triggers Daily"| LF
+    LF -->|"2️⃣ Queries 24h Metrics"| CW
+    LF -->|"4️⃣ Sends Email"| SES
+    SES -->|"5️⃣ Delivers PDF Report"| USERS
     
-    subgraph "Lambda Processing"
+    subgraph "3️⃣ Lambda Processing"
         direction TB
-        Q["📈 CloudWatch Query<br/>• Get 24h Metrics<br/>• Calculate Weighted<br/>• Aggregate Data"]
-        P["📄 PDF Generation<br/>• ReportLab Library<br/>• AWS Design Colors<br/>• Status Indicators"]
-        E["✉️ Email Composition<br/>• MIME Multipart<br/>• PDF Attachment<br/>• HTML Body"]
+        LOAD["📋 Load Config"]
+        QUERY["📈 Query Metrics"]
+        CALC["🧮 Calculate"]
+        PDF["📄 Generate PDF"]
+        EMAIL["✉️ Send Email"]
         
-        Q --> P --> E
+        LOAD --> QUERY --> CALC --> PDF --> EMAIL
     end
     
-    LF -.-> Q
+    LF -.-> LOAD
     
     classDef aws fill:#FF9900,stroke:#232F3E,stroke-width:2px,color:#fff
     classDef service fill:#232F3E,stroke:#FF9900,stroke-width:2px,color:#fff
@@ -43,7 +45,7 @@ flowchart TD
     
     class MT,CW,EB,SES aws
     class LF service
-    class Q,P,E process
+    class LOAD,QUERY,CALC,PDF,EMAIL process
     class USERS user
 ```
 
@@ -69,46 +71,49 @@ flowchart TD
 - **Trigger**: Invokes Lambda function daily
 - **Reliability**: Built-in retry and error handling
 
-### 4. AWS Lambda Function
+### 4. AWS Lambda Function (Docker Container)
 - **Runtime**: Python 3.9+ with Docker container
+- **Architecture**: ARM64 for cost optimization
 - **Memory**: 512 MB
 - **Timeout**: 5 minutes
 - **Trigger**: EventBridge scheduled event
 - **Dependencies**: ReportLab, Boto3, email libraries
+- **Configuration**: Injected via environment variables from config.json
 
 #### Lambda Function Flow:
-1. **Configuration Loading**: Read config from environment variables
-2. **Metrics Retrieval**: Query CloudWatch for each MediaTailor config
-3. **Data Processing**: Calculate weighted fill rates and aggregations
-4. **PDF Generation**: Create formatted report with AWS design system
+1. **Configuration Loading**: Parse REPORT_CONFIG environment variable
+2. **Metrics Retrieval**: Query CloudWatch for each MediaTailor config (24h window)
+3. **Data Processing**: Calculate weighted fill rates and status indicators
+4. **PDF Generation**: Create formatted report with color-coded status
 5. **Email Composition**: Build multipart MIME message with PDF attachment
-6. **Email Delivery**: Send via Amazon SES
+6. **Email Delivery**: Send via SES Raw Email API
 
 ### 5. Amazon SES (Simple Email Service)
 - **Purpose**: Email delivery service
+- **Email Identity**: CDK-managed verified sender email
+- **API**: Raw Email API for PDF attachments
 - **Features**: 
   - PDF attachment support
   - Multiple recipients
   - Delivery tracking
   - Bounce/complaint handling
-- **Requirements**: Verified sender email address
+- **Requirements**: Verified sender email address (automated via CDK)
 
 ## Data Flow
 
-1. **MediaTailor** generates metrics during ad serving operations
-2. **CloudWatch** collects and stores metrics with timestamps
-3. **EventBridge** triggers Lambda function on schedule
-4. **Lambda** queries CloudWatch for previous 24-hour metrics
-5. **Lambda** processes data and generates PDF report
-6. **Lambda** sends email via SES with PDF attachment
-7. **Recipients** receive daily report with actionable insights
+1️⃣ **EventBridge** triggers Lambda function daily (16:00 UTC)
+2️⃣ **Lambda** queries CloudWatch for 24-hour MediaTailor metrics
+3️⃣ **Lambda** processes data and generates PDF report
+4️⃣ **Lambda** sends email via SES
+5️⃣ **Recipients** receive PDF report
 
 ## Security
 
 ### IAM Permissions
-- **CloudWatch**: `GetMetricStatistics`, `ListMetrics`
-- **SES**: `SendEmail`, `SendRawEmail`
-- **Logs**: CloudWatch Logs for monitoring
+- **CloudWatch**: `GetMetricStatistics`, `ListMetrics` (all resources)
+- **SES**: `SendEmail`, `SendRawEmail` (scoped to email identity ARN)
+- **Logs**: CloudWatch Logs for monitoring (automatic)
+- **Principle of Least Privilege**: Permissions scoped to specific resources
 
 ### Network Security
 - Lambda runs in AWS managed VPC
@@ -166,8 +171,10 @@ flowchart TD
 ## Deployment
 
 ### Infrastructure as Code
-- **CDK (Cloud Development Kit)**: TypeScript/Python
+- **CDK (Cloud Development Kit)**: Python implementation
 - **CloudFormation**: Generated templates
+- **Docker**: Container-based Lambda deployment
+- **Configuration**: External config.json file
 - **Version Control**: Git-based deployment
 
 ### Environments

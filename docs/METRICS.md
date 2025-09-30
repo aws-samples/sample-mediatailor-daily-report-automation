@@ -1,101 +1,101 @@
-# Metrics Reference
+# MediaTailor Metrics Reference
 
-## Available Metrics
+## Core Fill Rate Metrics
 
-**Core Fill Rate Metrics:**
-- `Avail.FillRate` - Average fill rate across all ad avails (%)
-- `Avail.Duration` - Total planned ad time (milliseconds)
-- `Avail.FilledDuration` - Total filled ad time (milliseconds)
-- `AdDecisionServer.FillRate` - Fill rate from Ad Decision Server (%)
+### Avail.FillRate
+- **Description**: Average across all ad breaks (many unfilled)
+- **Type**: Percentage
+- **Interpretation**: Simple average that includes many short unfilled breaks
 
-**Calculated Metrics:**
-- **WeightedFillRate** = (Avail.FilledDuration / Avail.Duration) × 100
+### Avail.FillRate (Weighted)
+- **Description**: Actual revenue performance (time-weighted)
+- **Type**: Percentage (calculated)
+- **Interpretation**: More accurate revenue indicator as it weights by duration
 
-## Fill Rate Metrics (Revenue Impact)
+### Avail.Duration
+- **Description**: Total ad inventory available
+- **Type**: Duration (milliseconds)
+- **Interpretation**: Total time allocated for ads across all sessions
 
-### `Avail.FillRate` 🎯 **CRITICAL**
-- **What**: Simple average of fill rates across all ad avails
-- **Why Important**: Direct revenue impact - unfilled avails = lost revenue
-- **Good Range**: >85% (varies by industry)
-- **Alert If**: <80% or trending downward
+### Avail.FilledDuration
+- **Description**: Total ad time that generated revenue
+- **Type**: Duration (milliseconds)
+- **Interpretation**: Actual monetized ad time
 
-### `AdDecisionServer.FillRate` 🔍 **DIAGNOSTIC**
-- **What**: Fill rate from your Ad Decision Server (ADS)
-- **Why Important**: Identifies if low fill is ADS or MediaTailor issue
-- **Troubleshooting**: 
-  - If ADS fill rate is low → ADS not returning enough ads
-  - If ADS fill rate is high but Avail fill rate is low → MediaTailor processing issue
+## Ad Decision Server (ADS) Metrics
 
-### `WeightedFillRate` 📊 **CALCULATED**
-- **Formula**: (Avail.FilledDuration / Avail.Duration) × 100
-- **Why Better**: Accounts for different avail durations (longer avails get more weight)
-- **Use Case**: More accurate than simple average for business reporting
+### AdDecisionServer.FillRate
+- **Description**: ADS response rate per ad request
+- **Type**: Percentage
+- **Interpretation**: How often ADS successfully returns ads
 
-## Duration Metrics (Capacity Planning)
+### AdDecisionServer.Ads
+- **Description**: Number of ads returned by ADS
+- **Type**: Count
+- **Interpretation**: Total ad responses from your ad server
 
-### `Avail.Duration` ⏱️
-- **What**: Total planned ad time in milliseconds
-- **Why Important**: Shows your total ad inventory capacity
-- **Use Case**: Capacity planning and revenue forecasting
+### AdDecisionServer.Duration
+- **Description**: ADS response time (milliseconds)
+- **Type**: Duration (milliseconds)
+- **Interpretation**: Latency of ad decision requests
 
-### `Avail.FilledDuration` ✅
-- **What**: Actual ad time filled in milliseconds
-- **Why Important**: Shows monetized inventory
-- **KPI**: FilledDuration / Duration = utilization efficiency
+### AdDecisionServer.Errors
+- **Description**: ADS error count
+- **Type**: Count
+- **Interpretation**: Failed requests to ad decision server
 
-## Error Metrics (System Health)
+### AdDecisionServer.Timeouts
+- **Description**: ADS timeout count
+- **Type**: Count
+- **Interpretation**: Requests that exceeded timeout threshold
 
-### `AdDecisionServer.Errors` 🚨 **CRITICAL**
-- **What**: Non-200 responses, timeouts from ADS
-- **Why Important**: ADS failures directly impact fill rates
-- **Alert If**: >5% of requests or sudden spikes
-- **Action**: Check ADS health, network connectivity
+## Session & Playback Metrics
 
-### `GetManifest.Errors` 📋 **OPERATIONAL**
-- **What**: Errors during manifest generation
-- **Why Important**: Affects player experience and ad delivery
-- **Alert If**: >1% of requests
-- **Action**: Check MediaTailor service health
+### Session.Duration
+- **Description**: Total session time
+- **Type**: Duration (milliseconds)
+- **Interpretation**: Combined viewing time across all sessions
 
-### `ErrorRate` 📈 **CALCULATED**
-- **Formula**: (Total Errors / Total Requests) × 100
-- **Why Important**: Overall system health indicator
-- **Target**: <2% for healthy operations
+### Avail.Impression
+- **Description**: Ad impression count
+- **Type**: Count
+- **Interpretation**: Number of ad impressions served
 
-## Traffic Metrics (Load Monitoring)
+### Avail.ObservedDuration
+- **Description**: Actual observed ad break time
+- **Type**: Duration (milliseconds)
+- **Interpretation**: Real ad break duration as measured
 
-### `Requests` 🌐
-- **What**: Concurrent transactions per second
-- **Why Important**: Shows system load and viewer engagement
-- **Use Case**: Scaling decisions and performance monitoring
+### Avail.ExpectedDuration
+- **Description**: Expected ad break duration
+- **Type**: Duration (milliseconds)
+- **Interpretation**: Planned ad break duration from configuration
 
-## Troubleshooting
+## Error Monitoring Metrics
 
-### Low Fill Rate Diagnosis
-```
-If Avail.FillRate < 80%:
-  ├─ Check AdDecisionServer.FillRate
-  │   ├─ If ADS Fill Rate < 80% → ADS Issue
-  │   │   ├─ Check ad inventory levels
-  │   │   ├─ Review targeting criteria
-  │   │   └─ Verify ADS configuration
-  │   └─ If ADS Fill Rate > 80% → MediaTailor Issue
-  │       ├─ Check AdDecisionServer.Errors
-  │       ├─ Check GetManifest.Errors
-  │       └─ Review transcoding issues
-  └─ Compare Simple vs Weighted Fill Rate
-      └─ Large difference indicates duration variance
-```
+### GetManifest.Errors
+- **Description**: Manifest request failures
+- **Type**: Count
+- **Interpretation**: Errors when requesting video manifests
 
-### Performance Benchmarks
-| Metric | Excellent | Good | Needs Attention | Critical |
-|--------|-----------|------|-----------------|----------|
-| Fill Rate | >90% | 80-90% | 70-80% | <70% |
-| Error Rate | <1% | 1-2% | 2-5% | >5% |
-| ADS Errors | <2% | 2-5% | 5-10% | >10% |
+### Origin.Errors
+- **Description**: Origin server errors
+- **Type**: Count
+- **Interpretation**: Failures from content origin servers
 
-### Business Impact
-- **1% Fill Rate Drop** = ~1% revenue loss
-- **High Error Rates** = Poor viewer experience
-- **ADS Issues** = Immediate revenue impact
-- **Duration Metrics** = Inventory optimization opportunities
+## Status Indicators
+
+The report uses color-coded status indicators:
+
+- **✓ Good**: Metric is performing within expected ranges
+- **🟡 Low/Slow/High**: Metric needs attention but not critical
+- **🔴 Critical/High Errors**: Immediate attention required
+- **⚪ No Data**: No data available for the metric
+- **⚠️ Check Data/ADS**: Data validation warning
+
+## Key Relationships
+
+1. **Fill Rate Comparison**: Compare Avail.FillRate vs Avail.FillRate (Weighted) to understand break distribution
+2. **ADS Performance**: AdDecisionServer.Duration + Errors + Timeouts indicate ADS health
+3. **Revenue Efficiency**: Avail.FilledDuration / Avail.Duration shows monetization rate
+4. **System Health**: GetManifest.Errors + Origin.Errors show infrastructure issues

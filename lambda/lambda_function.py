@@ -240,14 +240,31 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles) -> List
         'Avail.FillRate (Weighted)': 'Actual revenue performance (time-weighted)',
         'Avail.Duration': 'Total ad inventory available',
         'Avail.FilledDuration': 'Total ad time that generated revenue',
-        'AdDecisionServer.FillRate': 'ADS response rate per ad request'
+        'AdDecisionServer.FillRate': 'ADS response rate per ad request',
+        'AdDecisionServer.Ads': 'Number of ads returned by ADS',
+        'AdDecisionServer.Duration': 'ADS response time (milliseconds)',
+        'AdDecisionServer.Errors': 'ADS error count',
+        'AdDecisionServer.Timeouts': 'ADS timeout count',
+        'Session.Duration': 'Total session time',
+        'Avail.Impression': 'Ad impression count',
+        'Avail.ObservedDuration': 'Actual observed ad break time',
+        'Avail.ExpectedDuration': 'Expected ad break duration',
+        'GetManifest.Errors': 'Manifest request failures',
+        'Origin.Errors': 'Origin server errors'
     }
     
     # Create table data with wrapped descriptions
     table_data = [['Metric', 'Description', 'Value', 'Status']]
     
     # Process metrics in specific order
-    metric_order = ['Avail.FillRate (Avg)', 'Avail.FillRate (Weighted)', 'Avail.Duration', 'Avail.FilledDuration', 'AdDecisionServer.FillRate']
+    metric_order = [
+        'Avail.FillRate (Avg)', 'Avail.FillRate (Weighted)', 
+        'Avail.Duration', 'Avail.FilledDuration', 'Avail.ObservedDuration',
+        'AdDecisionServer.FillRate', 'AdDecisionServer.Ads', 'AdDecisionServer.Duration', 
+        'AdDecisionServer.Errors', 'AdDecisionServer.Timeouts',
+        'Avail.Impression',
+        'GetManifest.Errors', 'Origin.Errors'
+    ]
     
     # Rename Avail.FillRate to Avail.FillRate (Avg) for display
     display_metrics = {}
@@ -259,7 +276,8 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles) -> List
     
     # Define metric types
     RATE_METRICS = ['Avail.FillRate (Avg)', 'Avail.FillRate (Weighted)', 'AdDecisionServer.FillRate']
-    DURATION_METRICS = ['Avail.Duration', 'Avail.FilledDuration']
+    DURATION_METRICS = ['Avail.Duration', 'Avail.FilledDuration', 'Avail.ObservedDuration', 'AdDecisionServer.Duration']
+    COUNT_METRICS = ['AdDecisionServer.Ads', 'AdDecisionServer.Errors', 'AdDecisionServer.Timeouts', 'Avail.Impression', 'GetManifest.Errors', 'Origin.Errors']
     
     for metric in metric_order:
         if metric not in display_metrics:
@@ -280,14 +298,27 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles) -> List
             value = f"{avg}%"
         elif metric in DURATION_METRICS:
             # Convert milliseconds to more appropriate units
-            seconds = sum_val / 1000
-            if seconds >= 3600:
-                hours = seconds / 3600
-                value = f"{hours:.1f}h ({seconds/60:.0f}min)"
-            elif seconds >= 60:
-                value = f"{seconds/60:.1f}min"
+            if metric == 'AdDecisionServer.Duration':
+                # ADS duration is typically in milliseconds, show as ms
+                value = f"{avg:.0f}ms"
             else:
-                value = f"{seconds:.1f}s"
+                # Other durations - convert from milliseconds
+                seconds = sum_val / 1000
+                if seconds >= 3600:
+                    hours = seconds / 3600
+                    value = f"{hours:.1f}h ({seconds/60:.0f}min)"
+                elif seconds >= 60:
+                    value = f"{seconds/60:.1f}min"
+                else:
+                    value = f"{seconds:.1f}s"
+        elif metric in COUNT_METRICS:
+            # Format count metrics appropriately
+            if sum_val >= 1000000:
+                value = f"{sum_val/1000000:.1f}M"
+            elif sum_val >= 1000:
+                value = f"{sum_val/1000:.1f}K"
+            else:
+                value = f"{int(sum_val)}"
         else:
             value = str(avg)
         
@@ -304,14 +335,29 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles) -> List
         elif metric in DURATION_METRICS:
             if sum_val == 0:
                 status_text = "⚪ No Data"
-            elif metric == 'Avail.Duration' and seconds > 7200:  # >2 hours seems high
-                status_text = "🟡 High Volume"
+            elif metric == 'AdDecisionServer.Duration' and avg > 500:
+                status_text = "🟡 Slow Response"
+            elif metric == 'Avail.Duration':
+                seconds = sum_val / 1000 if metric != 'AdDecisionServer.Duration' else avg / 1000
+                if seconds > 7200:  # >2 hours seems high
+                    status_text = "🟡 High Volume"
+        elif metric in COUNT_METRICS:
+            if sum_val == 0:
+                status_text = "⚪ No Data"
+            elif 'Errors' in metric and sum_val > 100:
+                status_text = "🔴 High Errors"
+            elif 'Timeouts' in metric and sum_val > 50:
+                status_text = "🟡 Timeouts"
         
-        # Add data validation warning for suspicious values
+        # Add data validation warnings for suspicious values
         if metric == 'Avail.FillRate (Avg)' and avg < 5 and 'Avail.FillRate (Weighted)' in display_metrics:
             weighted_rate = display_metrics['Avail.FillRate (Weighted)'].get('average', 0)
             if weighted_rate > 50:  # Large discrepancy suggests data issue
                 status_text = "⚠️ Check Data"
+        elif metric == 'AdDecisionServer.Ads' and sum_val == 0 and 'Avail.Impression' in display_metrics:
+            impressions = display_metrics['Avail.Impression'].get('sum', 0)
+            if impressions > 0:  # Impressions without ADS ads suggests issue
+                status_text = "⚠️ Check ADS"
         
         # Wrap description in Paragraph for better formatting
         description = Paragraph(metric_descriptions.get(metric, ''), styles['Normal'])

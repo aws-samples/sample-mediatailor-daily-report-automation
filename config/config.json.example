@@ -7,7 +7,15 @@
     "Avail.FillRate",
     "Avail.Duration",
     "Avail.FilledDuration",
-    "AdDecisionServer.FillRate"
+    "AdDecisionServer.FillRate",
+    "AdDecisionServer.Ads",
+    "AdDecisionServer.Duration",
+    "AdDecisionServer.Errors",
+    "AdDecisionServer.Timeouts",
+    "Avail.Impression",
+    "Avail.ObservedDuration",
+    "GetManifest.Errors",
+    "Origin.Errors"
   ],
   "recipients": [
     "user1@example.com",

@@ -15,7 +15,17 @@ Edit `config.json`:
     "Avail.FillRate",
     "Avail.Duration", 
     "Avail.FilledDuration",
-    "AdDecisionServer.FillRate"
+    "AdDecisionServer.FillRate",
+    "AdDecisionServer.Ads",
+    "AdDecisionServer.Duration",
+    "AdDecisionServer.Errors",
+    "AdDecisionServer.Timeouts",
+    "Session.Duration",
+    "Avail.Impression",
+    "Avail.ObservedDuration",
+    "Avail.ExpectedDuration",
+    "GetManifest.Errors",
+    "Origin.Errors"
   ],
   "recipients": ["email@example.com"],
   "sender_email": "noreply@example.com",

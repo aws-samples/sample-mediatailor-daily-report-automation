@@ -40,7 +40,7 @@ def lambda_handler(event, context):
     return {
         'statusCode': 200, 
         'body': 'Report sent successfully',
-        'reportData': report_data if test_mode else None
+        'reportData': report_data
     }
 
 def get_mediatailor_metrics(config_name: str, metrics: List[str]) -> Dict:
@@ -97,9 +97,15 @@ def calculate_derived_metrics(metric_data: Dict) -> Dict:
         weighted_fill_rate = (filled_duration / total_duration) * 100
         
         derived['Avail.FillRate (Weighted)'] = {
-            'average': round(weighted_fill_rate, 2),
-            'sum': round(weighted_fill_rate, 2)
+            'average': round(weighted_fill_rate, 1),
+            'sum': round(weighted_fill_rate, 1)
         }
+        
+        # Add validation note if there's a significant discrepancy
+        if 'Avail.FillRate' in metric_data:
+            avg_fill_rate_percent = metric_data['Avail.FillRate']['average'] * 100
+            if abs(avg_fill_rate_percent - weighted_fill_rate) > 20:
+                print(f"WARNING: Large discrepancy between average fill rate ({avg_fill_rate_percent:.1f}%) and weighted fill rate ({weighted_fill_rate:.1f}%)")
     
     return derived
 
@@ -236,33 +242,40 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles) -> List
     
     # Metric descriptions with clearer explanations
     metric_descriptions = {
-        'Avail.FillRate (Avg)': 'Average across all ad breaks (many unfilled)',
-        'Avail.FillRate (Weighted)': 'Actual revenue performance (time-weighted)',
-        'Avail.Duration': 'Total ad inventory available',
-        'Avail.FilledDuration': 'Total ad time that generated revenue',
-        'AdDecisionServer.FillRate': 'ADS response rate per ad request',
+        'Avail.FillRate (Avg)': 'Simple average fill rate percentage for individual ad avails',
+        'Avail.FillRate (Weighted)': 'Weighted average fill rate: (FilledDuration/Duration) × 100',
+        'Avail.Duration': 'Planned ad avail time from origin manifest',
+        'Avail.FilledDuration': 'Actual duration of ad breaks that were filled with ads',
+        'AdDecisionServer.FillRate': 'Simple average of fill rate percentages returned by ADS',
         'AdDecisionServer.Ads': 'Number of ads returned by ADS',
-        'AdDecisionServer.Duration': 'ADS response time (milliseconds)',
-        'AdDecisionServer.Errors': 'ADS error count',
-        'AdDecisionServer.Timeouts': 'ADS timeout count',
+        'AdDecisionServer.Duration': 'Total duration of ads returned by ADS',
+        'AdDecisionServer.Latency': 'Response time in milliseconds for requests MediaTailor makes to ADS',
+        'AdDecisionServer.Errors': 'Number of non-HTTP 200, empty, and timed-out responses from ADS',
+        'AdDecisionServer.Timeouts': 'Number of timed-out requests to ADS',
         'Session.Duration': 'Total session time',
-        'Avail.Impression': 'Ad impression count',
-        'Avail.ObservedDuration': 'Actual observed ad break time',
+        'Avail.Impression': 'Number of ad impressions (increments when first segment requested)',
+        'Avail.ObservedDuration': 'Actual duration of ad avails that occurred based on manifest segments',
         'Avail.ExpectedDuration': 'Expected ad break duration',
-        'GetManifest.Errors': 'Manifest request failures',
-        'Origin.Errors': 'Origin server errors'
+        'GetManifest.Errors': 'Number of errors while MediaTailor was generating manifests',
+        'Origin.Errors': 'Origin server connectivity problems'
     }
     
     # Create table data with wrapped descriptions
     table_data = [['Metric', 'Description', 'Value', 'Status']]
     
-    # Process metrics in specific order
+    # Process metrics in logical relationship order
     metric_order = [
-        'Avail.FillRate (Avg)', 'Avail.FillRate (Weighted)', 
-        'Avail.Duration', 'Avail.FilledDuration', 'Avail.ObservedDuration',
-        'AdDecisionServer.FillRate', 'AdDecisionServer.Ads', 'AdDecisionServer.Duration', 
+        # Duration metrics (foundation)
+        'Avail.Duration', 'Avail.ObservedDuration', 'Avail.FilledDuration',
+        # Fill rate metrics (calculated from durations)
+        'Avail.FillRate (Avg)', 'Avail.FillRate (Weighted)',
+        # ADS performance (affects fill rates)
+        'AdDecisionServer.FillRate', 'AdDecisionServer.Ads', 'AdDecisionServer.Duration', 'AdDecisionServer.Latency',
+        # ADS errors (root cause analysis)
         'AdDecisionServer.Errors', 'AdDecisionServer.Timeouts',
+        # Delivery metrics
         'Avail.Impression',
+        # System errors (infrastructure)
         'GetManifest.Errors', 'Origin.Errors'
     ]
     
@@ -277,6 +290,7 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles) -> List
     # Define metric types
     RATE_METRICS = ['Avail.FillRate (Avg)', 'Avail.FillRate (Weighted)', 'AdDecisionServer.FillRate']
     DURATION_METRICS = ['Avail.Duration', 'Avail.FilledDuration', 'Avail.ObservedDuration', 'AdDecisionServer.Duration']
+    LATENCY_METRICS = ['AdDecisionServer.Latency']
     COUNT_METRICS = ['AdDecisionServer.Ads', 'AdDecisionServer.Errors', 'AdDecisionServer.Timeouts', 'Avail.Impression', 'GetManifest.Errors', 'Origin.Errors']
     
     for metric in metric_order:
@@ -295,12 +309,28 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles) -> List
         sum_val = data.get('sum', 0)
         
         if metric in RATE_METRICS:
-            value = f"{avg}%"
+            # CloudWatch returns fill rates as decimals (0.74 = 74%)
+            if metric in ['Avail.FillRate (Avg)', 'AdDecisionServer.FillRate']:
+                display_value = avg * 100  # Convert decimal to percentage
+                value = f"{display_value:.1f}%"
+            else:
+                # Weighted fill rate is already calculated as percentage
+                value = f"{avg:.1f}%"
+        elif metric in LATENCY_METRICS:
+            # ADS latency in milliseconds
+            value = f"{avg:.0f}ms"
         elif metric in DURATION_METRICS:
             # Convert milliseconds to more appropriate units
             if metric == 'AdDecisionServer.Duration':
-                # ADS duration is typically in milliseconds, show as ms
-                value = f"{avg:.0f}ms"
+                # ADS duration is total ad content duration, not latency
+                seconds = sum_val / 1000
+                if seconds >= 3600:
+                    hours = seconds / 3600
+                    value = f"{hours:.1f}h ({seconds/60:.0f}min)"
+                elif seconds >= 60:
+                    value = f"{seconds/60:.1f}min"
+                else:
+                    value = f"{seconds:.1f}s"
             else:
                 # Other durations - convert from milliseconds
                 seconds = sum_val / 1000
@@ -326,17 +356,36 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles) -> List
         status_text = "✓ Good"
         
         if 'FillRate' in metric:
+            # Adjust thresholds based on metric type
+            if metric in ['Avail.FillRate (Avg)', 'AdDecisionServer.FillRate']:
+                # These are decimal values from CloudWatch (0.74 = 74%)
+                rate_percent = avg * 100
+            else:
+                # Weighted fill rate is already a percentage
+                rate_percent = avg
+                
+            if rate_percent == 0:
+                status_text = "⚪ No Data"
+            elif rate_percent < 70:
+                status_text = "🔴 Critical"
+            elif rate_percent < 85:
+                status_text = "🟡 Low"
+        elif metric in LATENCY_METRICS:
             if avg == 0:
                 status_text = "⚪ No Data"
-            elif avg < 70:
-                status_text = "🔴 Critical"
-            elif avg < 85:
-                status_text = "🟡 Low"
+            elif avg > 500:
+                status_text = "🔴 High Latency"
+            elif avg > 300:
+                status_text = "🟡 Slow Response"
         elif metric in DURATION_METRICS:
             if sum_val == 0:
                 status_text = "⚪ No Data"
-            elif metric == 'AdDecisionServer.Duration' and avg > 500:
-                status_text = "🟡 Slow Response"
+            elif metric == 'AdDecisionServer.Duration':
+                # ADS duration is ad content duration - compare with available inventory
+                ads_duration_sec = sum_val / 1000
+                avail_duration_sec = display_metrics.get('Avail.Duration', {}).get('sum', 0) / 1000
+                if avail_duration_sec > 0 and ads_duration_sec > avail_duration_sec * 1.5:
+                    status_text = "🟡 High Ad Volume"
             elif metric == 'Avail.Duration':
                 seconds = sum_val / 1000 if metric != 'AdDecisionServer.Duration' else avg / 1000
                 if seconds > 7200:  # >2 hours seems high
@@ -350,9 +399,13 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles) -> List
                 status_text = "🟡 Timeouts"
         
         # Add data validation warnings for suspicious values
-        if metric == 'Avail.FillRate (Avg)' and avg < 5 and 'Avail.FillRate (Weighted)' in display_metrics:
+        if metric == 'Avail.FillRate (Avg)' and 'Avail.FillRate (Weighted)' in display_metrics:
+            # Convert avg fill rate to percentage for comparison
+            avg_rate_percent = avg * 100
             weighted_rate = display_metrics['Avail.FillRate (Weighted)'].get('average', 0)
-            if weighted_rate > 50:  # Large discrepancy suggests data issue
+            
+            # Check for large discrepancy between average and weighted rates
+            if abs(avg_rate_percent - weighted_rate) > 20:  # >20% difference suggests data issue
                 status_text = "⚠️ Check Data"
         elif metric == 'AdDecisionServer.Ads' and sum_val == 0 and 'Avail.Impression' in display_metrics:
             impressions = display_metrics['Avail.Impression'].get('sum', 0)
@@ -414,31 +467,6 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles) -> List
     
     elements.append(table)
     
-    # Add insights section for context
-    insights = generate_insights(display_metrics)
-    if insights:
-        elements.append(Spacer(1, 0.15*inch))
-        
-        insights_style = ParagraphStyle(
-            'Insights',
-            parent=styles['Normal'],
-            fontSize=9,
-            textColor=colors.HexColor('#495057'),
-            leftIndent=10,
-            spaceAfter=10,
-            borderWidth=1,
-            borderColor=colors.HexColor('#17A2B8'),
-            borderPadding=8,
-            backColor=colors.HexColor('#E7F3FF')
-        )
-        
-        insights_header = Paragraph("<b>Key Insights:</b>", insights_style)
-        elements.append(insights_header)
-        
-        for insight in insights:
-            insight_para = Paragraph(f"• {insight}", insights_style)
-            elements.append(insight_para)
-    
     return elements
 
 
@@ -495,40 +523,3 @@ def send_email_with_pdf(pdf_data: bytes, recipients: List[str]):
         print(f"Error sending email: {e}")
         raise
 
-def generate_insights(metrics: Dict) -> List[str]:
-    """Generate contextual insights from metrics"""
-    insights = []
-    
-    # Check for fill rate discrepancy
-    avg_fill = metrics.get('Avail.FillRate (Avg)', {}).get('average', 0)
-    weighted_fill = metrics.get('Avail.FillRate (Weighted)', {}).get('average', 0)
-    
-    if abs(avg_fill - weighted_fill) > 20:
-        insights.append(f"Per-avail average ({avg_fill}%) vs time-weighted ({weighted_fill}%) - many short unfilled breaks but good overall monetization")
-        insights.append(f"MediaTailor creates many micro ad opportunities but fills the valuable longer slots effectively")
-    
-    # Check ad duration context
-    duration = metrics.get('Avail.Duration', {}).get('sum', 0)
-    filled_duration = metrics.get('Avail.FilledDuration', {}).get('sum', 0)
-    
-    if duration > 0:
-        duration_hours = duration / 1000 / 3600
-        if duration_hours > 1:
-            insights.append(f"Total ad inventory: {duration_hours:.1f}h - verify if this matches expected viewer sessions and ad frequency")
-        
-        # Calculate implied viewer hours
-        if duration_hours > 0:
-            # Assuming typical 6-8 minutes of ads per hour of content
-            implied_content_hours = duration_hours * 8  # Conservative estimate
-            insights.append(f"Implies ~{implied_content_hours:.1f}h of total content viewed (assuming 12-15% ad load)")
-        
-        if filled_duration > 0:
-            fill_efficiency = (filled_duration / duration) * 100
-            if fill_efficiency > 90:
-                insights.append("Excellent fill efficiency - inventory is well-monetized")
-            elif fill_efficiency < 60:
-                insights.append("Low fill efficiency - consider reviewing ad decisioning strategy")
-            
-            insights.append(f"Bottom line: {fill_efficiency:.1f}% of ad time generated revenue ({filled_duration/1000/60:.0f}min of {duration/1000/60:.0f}min)")
-    
-    return insights

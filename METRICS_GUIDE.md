@@ -5,142 +5,154 @@
 ### 🚨 **Alert Thresholds**
 ```
 CRITICAL ALERTS:
-- Avail.FillRate < 70%
-- AdDecisionServer.Errors > 10%
-- ErrorRate > 5%
+- Avail.FillRate (Avg) < 70%
+- Avail.FillRate (Weighted) < 70%
+- AdDecisionServer.Errors > 100 count
+- GetManifest.Errors > 100 count
 
 WARNING ALERTS:
-- Avail.FillRate < 80%
-- AdDecisionServer.Errors > 5%
-- ErrorRate > 2%
+- Avail.FillRate (Avg) < 85%
+- AdDecisionServer.Duration > 500ms
+- AdDecisionServer.Timeouts > 50 count
 ```
 
 ### 📊 **Daily KPIs**
-1. **Fill Rate** - Primary revenue metric
-2. **Weighted Fill Rate** - More accurate business metric  
-3. **Error Rate** - System health indicator
-4. **ADS Fill Rate** - Root cause analysis
+1. **Avail.FillRate (Avg)** - Simple average across all ad breaks
+2. **Avail.FillRate (Weighted)** - Duration-weighted fill rate (revenue metric)
+3. **AdDecisionServer.FillRate** - ADS response success rate
+4. **Error Counts** - System health indicators
 
 ## Metric Deep Dive
 
 ### **Revenue Metrics**
 
 #### Fill Rate Analysis
-- **Simple Average** (`Avail.FillRate`): Average across all avails
-- **Weighted Average** (`WeightedFillRate`): Duration-weighted (more accurate)
-- **Business Impact**: 1% fill rate = ~1% revenue change
+- **Avail.FillRate (Avg)**: Simple average across all ad breaks (includes many unfilled micro-breaks)
+- **Avail.FillRate (Weighted)**: Duration-weighted calculation = (FilledDuration / TotalDuration) × 100
+- **Business Impact**: Weighted fill rate directly correlates to revenue
 
-#### When Fill Rates Differ
+#### When Fill Rates Differ (>20% gap)
 ```
-If WeightedFillRate > Avail.FillRate:
-→ Longer avails performing better
-→ Focus on optimizing short avails
+If Weighted > Average:
+→ MediaTailor creates many micro ad opportunities
+→ Successfully fills valuable longer slots
+→ Good monetization despite low per-break average
 
-If WeightedFillRate < Avail.FillRate:  
-→ Shorter avails performing better
-→ Review long-form content ad strategy
+If Average > Weighted:
+→ Short breaks filling well, long breaks struggling
+→ Review ad decisioning for longer content
 ```
 
 ### **Operational Metrics**
 
-#### Error Rate Breakdown
-- **ADS Errors**: Upstream ad server issues
-- **Manifest Errors**: MediaTailor processing issues
-- **Combined Error Rate**: Overall system health
+#### Error Monitoring
+- **AdDecisionServer.Errors**: Failed ADS requests (count)
+- **AdDecisionServer.Timeouts**: ADS timeout events (count)
+- **GetManifest.Errors**: Manifest generation failures (count)
+- **Origin.Errors**: Content origin server issues (count)
 
-#### Traffic Patterns
-- **Requests**: Concurrent viewer load
-- **Duration Metrics**: Ad inventory utilization
+#### Performance Metrics
+- **AdDecisionServer.Duration**: ADS response time (milliseconds)
+- **AdDecisionServer.FillRate**: ADS success rate percentage
+- **AdDecisionServer.Ads**: Total ads returned by ADS (count)
+
+#### Traffic & Inventory
+- **Avail.Duration**: Total ad inventory available (milliseconds)
+- **Avail.FilledDuration**: Monetized ad time (milliseconds)
+- **Avail.ObservedDuration**: Actual measured ad break time
+- **Avail.Impression**: Total ad impressions served (count)
 
 ## Troubleshooting Playbook
 
-### **Scenario 1: Low Fill Rate**
+### **Scenario 1: Low Weighted Fill Rate (<70%)**
 ```
-Step 1: Check AdDecisionServer.FillRate
-├─ If Low (< 80%):
-│  ├─ Review ad inventory levels
-│  ├─ Check targeting criteria  
-│  └─ Verify ADS configuration
-└─ If High (> 80%):
-   ├─ Check AdDecisionServer.Errors
-   ├─ Review transcoding issues
-   └─ Check GetManifest.Errors
+Step 1: Compare Fill Rates
+├─ If Avg FillRate also low:
+│  ├─ Check AdDecisionServer.FillRate
+│  ├─ Review AdDecisionServer.Errors count
+│  └─ Verify ADS inventory levels
+└─ If Avg FillRate normal (>20% gap):
+   ├─ Normal - many micro-breaks unfilled
+   └─ Focus on weighted rate for revenue
 ```
 
-### **Scenario 2: High Error Rate**
+### **Scenario 2: High Error Counts (>100)**
 ```
-Step 1: Identify Error Source
+Step 1: Identify Primary Error Source
 ├─ AdDecisionServer.Errors High:
-│  ├─ Check ADS server health
-│  ├─ Review network connectivity
-│  └─ Verify ADS response times
-└─ GetManifest.Errors High:
-   ├─ Check MediaTailor service status
-   ├─ Review origin server health
-   └─ Check manifest complexity
+│  ├─ Check AdDecisionServer.Duration (>500ms)
+│  ├─ Review AdDecisionServer.Timeouts
+│  └─ Verify ADS server health
+├─ GetManifest.Errors High:
+│  ├─ Check MediaTailor service status
+│  └─ Review manifest complexity
+└─ Origin.Errors High:
+   └─ Check content origin server health
 ```
 
-### **Scenario 3: Performance Degradation**
+### **Scenario 3: Performance Issues**
 ```
-Step 1: Compare Metrics
-├─ Fill Rate Trending Down:
-│  └─ Check if ADS or MediaTailor issue
-├─ Error Rate Trending Up:
-│  └─ Identify error source and pattern
-└─ Request Volume Changes:
-   └─ Check if capacity-related issue
+Step 1: Check Response Times
+├─ AdDecisionServer.Duration > 500ms:
+│  ├─ Review ADS server performance
+│  ├─ Check network latency
+│  └─ Consider timeout adjustments
+└─ High Timeout Count (>50):
+   ├─ Increase ADS timeout threshold
+   └─ Investigate ADS capacity
 ```
 
 ## Business Intelligence
 
-### **Revenue Optimization**
-- Monitor fill rate trends by time of day
-- Compare weekday vs weekend performance  
-- Track seasonal patterns
-- Identify high-value vs low-value inventory
+### **Revenue Analysis**
+- **Primary KPI**: Avail.FillRate (Weighted) - direct revenue correlation
+- **Inventory Utilization**: FilledDuration / TotalDuration ratio
+- **Content Hours**: TotalDuration ÷ 8 = estimated content hours (12-15% ad load)
+- **Revenue Minutes**: FilledDuration ÷ 60,000 = billable ad minutes
 
-### **Operational Excellence**
-- Set up automated alerts for threshold breaches
-- Track error rate trends to prevent issues
-- Monitor ADS performance for SLA compliance
-- Use weighted metrics for accurate reporting
+### **Operational Monitoring**
+- **Error Thresholds**: >100 errors require investigation
+- **Performance SLA**: ADS response <500ms
+- **Fill Rate SLA**: Weighted fill rate >85%
+- **Timeout Monitoring**: <50 timeouts per day
 
-### **Capacity Planning**
-- Use duration metrics for inventory forecasting
-- Monitor request patterns for scaling decisions
-- Track fill rate vs traffic correlation
-- Plan for peak traffic events
+### **Data Validation Alerts**
+- **Suspicious Data**: Large gap between avg/weighted fill rates
+- **ADS Mismatch**: Impressions without ADS ads
+- **Zero Data**: Missing metrics indicate collection issues
 
-## Integration with Business Systems
+## Metric Calculations
 
-### **Revenue Reporting**
-```sql
--- Example: Calculate daily revenue impact
-SELECT 
-  date,
-  avail_duration_ms / 1000 / 60 as total_ad_minutes,
-  filled_duration_ms / 1000 / 60 as filled_ad_minutes,
-  (filled_duration_ms / avail_duration_ms) * 100 as weighted_fill_rate,
-  filled_ad_minutes * avg_cpm / 1000 as estimated_revenue
-FROM daily_metrics;
+### **Derived Metrics**
+```python
+# Weighted Fill Rate (calculated in Lambda)
+weighted_fill_rate = (filled_duration_sum / total_duration_sum) * 100
+
+# Content Hours Estimation
+content_hours = total_duration_ms / 1000 / 3600 / 0.125  # 12.5% ad load
+
+# Fill Efficiency
+fill_efficiency = (filled_duration / total_duration) * 100
 ```
 
-### **SLA Monitoring**
-- Fill Rate SLA: Typically 85-90%
-- Error Rate SLA: Typically <2%
-- ADS Response Time: Typically <500ms
-- System Availability: Typically 99.9%
+### **Status Indicators**
+- **✓ Good**: Metrics within normal ranges
+- **🟡 Warning**: Needs attention (slow response, low fill)
+- **🔴 Critical**: Immediate action required (<70% fill, >100 errors)
+- **⚪ No Data**: Missing data points
+- **⚠️ Check**: Data validation warnings
 
-## Advanced Analytics
+## Report Insights
 
-### **Correlation Analysis**
-- Fill Rate vs Time of Day
-- Error Rate vs Traffic Volume  
-- ADS Performance vs Fill Rate
-- Seasonal Trends and Patterns
+### **Automated Analysis**
+The system generates contextual insights:
+- **Fill Rate Gaps**: Explains >20% difference between avg/weighted rates
+- **Inventory Context**: Converts durations to business-friendly units
+- **Efficiency Ratings**: Categorizes fill performance (>90% excellent, <60% needs review)
+- **Revenue Summary**: Bottom-line monetization effectiveness
 
-### **Predictive Insights**
-- Forecast fill rate based on historical trends
-- Predict capacity needs based on traffic patterns
-- Identify potential issues before they impact revenue
-- Optimize ad inventory based on performance data
+### **Key Relationships**
+- **Avail.Impression** should correlate with **AdDecisionServer.Ads**
+- **High AdDecisionServer.Duration** often leads to **Timeouts**
+- **Large Avg/Weighted gap** indicates many micro ad opportunities
+- **Zero ADS ads** with **positive Impressions** suggests data issues

@@ -133,37 +133,79 @@ def get_mediatailor_metrics(config_name: str, metrics: List[str], logger) -> Dic
             metric_data[metric_name] = {'error': str(e)}
     
     # Calculate derived metrics
-    metric_data.update(calculate_derived_metrics(metric_data))
+    metric_data.update(calculate_derived_metrics(metric_data, logger, config_name))
     
     return metric_data
 
-def calculate_derived_metrics(metric_data: Dict) -> Dict:
+def calculate_derived_metrics(metric_data: Dict, logger, config_name: str) -> Dict:
     """Calculate weighted fill rate"""
     
     derived = {}
     
-    # Calculate Weighted Fill Rate (more accurate than simple average)
-    if ('Avail.Duration' in metric_data and 'Avail.FilledDuration' in metric_data and 
-        metric_data['Avail.Duration'].get('sum', 0) > 0):
-        
-        total_duration = metric_data['Avail.Duration']['sum']
-        filled_duration = metric_data['Avail.FilledDuration']['sum']
-        weighted_fill_rate = (filled_duration / total_duration) * 100
-        
-        derived['Avail.FillRate (Weighted)'] = {
-            'average': round(weighted_fill_rate, 1),
-            'sum': round(weighted_fill_rate, 1)
-        }
-        
-        # Add validation note if there's a significant discrepancy
-        if 'Avail.FillRate' in metric_data:
-            avg_fill_rate_percent = metric_data['Avail.FillRate']['average'] * 100
-            if abs(avg_fill_rate_percent - weighted_fill_rate) > 20:
-                logging.getLogger().warning("Large fill rate discrepancy detected", extra={
-                    "avg_fill_rate_percent": avg_fill_rate_percent,
-                    "weighted_fill_rate": weighted_fill_rate,
-                    "discrepancy": abs(avg_fill_rate_percent - weighted_fill_rate)
+    try:
+        # Calculate Weighted Fill Rate (more accurate than simple average)
+        if ('Avail.Duration' in metric_data and 'Avail.FilledDuration' in metric_data and 
+            metric_data['Avail.Duration'].get('sum', 0) > 0):
+            
+            total_duration = metric_data['Avail.Duration']['sum']
+            filled_duration = metric_data['Avail.FilledDuration']['sum']
+            
+            # Validate data before calculation
+            if total_duration <= 0:
+                logger.warning("Invalid total duration for weighted fill rate calculation", extra={
+                    "config_name": config_name,
+                    "total_duration": total_duration,
+                    "filled_duration": filled_duration
                 })
+                return derived
+            
+            weighted_fill_rate = (filled_duration / total_duration) * 100
+            
+            derived['Avail.FillRate (Weighted)'] = {
+                'average': round(weighted_fill_rate, 1),
+                'sum': round(weighted_fill_rate, 1)
+            }
+            
+            logger.debug("Calculated weighted fill rate", extra={
+                "total_duration": total_duration,
+                "filled_duration": filled_duration,
+                "weighted_fill_rate": weighted_fill_rate
+            })
+            
+            # Add validation note if there's a significant discrepancy
+            if 'Avail.FillRate' in metric_data:
+                try:
+                    avg_fill_rate_percent = metric_data['Avail.FillRate']['average'] * 100
+                    discrepancy = abs(avg_fill_rate_percent - weighted_fill_rate)
+                    
+                    if discrepancy > 20:
+                        logger.warning("Large fill rate discrepancy detected", extra={
+                            "config_name": config_name,
+                            "avg_fill_rate_percent": avg_fill_rate_percent,
+                            "weighted_fill_rate": weighted_fill_rate,
+                            "discrepancy": discrepancy
+                        })
+                except Exception as e:
+                    logger.error("Failed to calculate fill rate discrepancy", extra={
+                        "config_name": config_name,
+                        "error": str(e),
+                        "stack_trace": traceback.format_exc(),
+                        "metric_data": str(metric_data.get('Avail.FillRate', {}))
+                    })
+        else:
+            logger.debug("Insufficient data for weighted fill rate calculation", extra={
+                "has_duration": 'Avail.Duration' in metric_data,
+                "has_filled_duration": 'Avail.FilledDuration' in metric_data,
+                "duration_sum": metric_data.get('Avail.Duration', {}).get('sum', 0)
+            })
+    
+    except Exception as e:
+        logger.error("Failed to calculate derived metrics", extra={
+            "config_name": config_name,
+            "error": str(e),
+            "stack_trace": traceback.format_exc(),
+            "available_metrics": list(metric_data.keys())
+        })
     
     return derived
 

@@ -43,6 +43,8 @@ def setup_logging(correlation_id=None):
     
     # Add correlation filter if provided
     if correlation_id:
+        # Remove existing correlation filters to prevent accumulation
+        logger.filters = [f for f in logger.filters if not isinstance(f, CorrelationFilter)]
         logger.addFilter(CorrelationFilter(correlation_id))
     
     # Reduce AWS SDK noise
@@ -176,12 +178,15 @@ def get_mediatailor_metrics(config_name: str, metrics: List[str], logger) -> Dic
             metric_data[metric_name] = {'error': str(e)}
     
     # Calculate derived metrics
-    calculate_derived_metrics(metric_data, logger, config_name)
+    derived_metrics = calculate_derived_metrics(metric_data, logger, config_name)
+    metric_data.update(derived_metrics)
     
     return metric_data
 
-def calculate_derived_metrics(metric_data: Dict, logger, config_name: str) -> None:
-    """Calculate weighted fill rate and add to metric_data"""
+def calculate_derived_metrics(metric_data: Dict, logger, config_name: str) -> Dict:
+    """Calculate weighted fill rate and return derived metrics"""
+    
+    derived_metrics = {}
     
     try:
         # Calculate Weighted Fill Rate (more accurate than simple average)
@@ -201,11 +206,11 @@ def calculate_derived_metrics(metric_data: Dict, logger, config_name: str) -> No
                     "total_duration": total_duration,
                     "filled_duration": filled_duration
                 })
-                return
+                return derived_metrics
             
             weighted_fill_rate = (filled_duration / total_duration) * 100
             
-            metric_data['Avail.FillRate (Weighted)'] = {
+            derived_metrics['Avail.FillRate (Weighted)'] = {
                 'average': round(weighted_fill_rate, 1),
                 'sum': round(weighted_fill_rate, 1)
             }
@@ -217,24 +222,16 @@ def calculate_derived_metrics(metric_data: Dict, logger, config_name: str) -> No
             })
             
             # Add validation note if there's a significant discrepancy
-            if 'Avail.FillRate' in metric_data:
-                try:
-                    avg_fill_rate_percent = metric_data['Avail.FillRate']['average'] * 100
-                    discrepancy = abs(avg_fill_rate_percent - weighted_fill_rate)
-                    
-                    if discrepancy > 20:
-                        logger.warning("Large fill rate discrepancy detected", extra={
-                            "config_name": config_name,
-                            "avg_fill_rate_percent": avg_fill_rate_percent,
-                            "weighted_fill_rate": weighted_fill_rate,
-                            "discrepancy": discrepancy
-                        })
-                except Exception as e:
-                    logger.error("Failed to calculate fill rate discrepancy", extra={
+            if 'Avail.FillRate' in metric_data and metric_data['Avail.FillRate'].get('average') is not None:
+                avg_fill_rate_percent = metric_data['Avail.FillRate']['average'] * 100
+                discrepancy = abs(avg_fill_rate_percent - weighted_fill_rate)
+                
+                if discrepancy > 20:
+                    logger.warning("Large fill rate discrepancy detected", extra={
                         "config_name": config_name,
-                        "error": str(e),
-                        "stack_trace": traceback.format_exc(),
-                        "metric_data": str(metric_data.get('Avail.FillRate', {}))
+                        "avg_fill_rate_percent": avg_fill_rate_percent,
+                        "weighted_fill_rate": weighted_fill_rate,
+                        "discrepancy": discrepancy
                     })
         else:
             logger.debug("Insufficient data for weighted fill rate calculation", extra={
@@ -250,6 +247,8 @@ def calculate_derived_metrics(metric_data: Dict, logger, config_name: str) -> No
             "stack_trace": traceback.format_exc(),
             "available_metrics": list(metric_data.keys())
         })
+    
+    return derived_metrics
 
 def generate_pdf_report(report_data: Dict) -> bytes:
     """Generate PDF report"""
@@ -303,10 +302,10 @@ def generate_pdf_report(report_data: Dict) -> bytes:
             backColor=colors.HexColor('#F8F9FA')
         )
         
-        summary_text = (f"This report covers {len(report_data)} MediaTailor "
-                        f"configuration(s). Each section provides detailed metrics "
-                        f"including fill rates, ad duration statistics, and system "
-                        f"health indicators.")
+        summary_text = ("This report covers " + f"{len(report_data)}" + " MediaTailor "
+                        "configuration(s). Each section provides detailed metrics "
+                        "including fill rates, ad duration statistics, and system "
+                        "health indicators.")
         summary = Paragraph(summary_text, summary_style)
         story.append(summary)
         story.append(Spacer(1, 0.2*inch))

@@ -76,7 +76,9 @@ class MediaTailorReportStack(Stack):
                 "REPORT_CONFIG": json.dumps(config),
                 "LOG_LEVEL": "INFO"  # Change to DEBUG for development
             },
-            log_retention=logs.RetentionDays.ONE_MONTH
+            log_group=logs.LogGroup(self, "MediaTailorReportFunctionLogGroup",
+                retention=logs.RetentionDays.ONE_MONTH
+            )
         )
 
         # IAM permissions

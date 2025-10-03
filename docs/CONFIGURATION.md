@@ -50,6 +50,21 @@ Edit `config.json`:
 - `"hour": "8", "minute": "0"` = 8:00 AM UTC
 - `"hour": "0", "minute": "30"` = 12:30 AM UTC
 
+## Logging Configuration
+
+**Environment Variables** (set in CDK stack):
+- `LOG_LEVEL`: Controls logging verbosity
+  - `INFO`: Production (default)
+  - `DEBUG`: Development/troubleshooting
+  - `WARNING`: Issues only
+  - `ERROR`: Errors only
+
+**Log Features**:
+- Structured JSON logging with correlation IDs
+- 30-day automatic retention
+- Full stack traces for errors
+- CloudWatch integration for monitoring
+
 ## Report Insights
 
 The daily report helps you:

@@ -1,6 +1,8 @@
 import json
 import boto3
 import os
+import logging
+import traceback
 from datetime import datetime, timedelta
 from typing import Dict, List
 from reportlab.lib.pagesizes import letter
@@ -13,37 +15,84 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
 
+# Setup structured logging
+def setup_logging(correlation_id: str):
+    log_level = os.environ.get('LOG_LEVEL', 'INFO')
+    logger = logging.getLogger()
+    logger.setLevel(getattr(logging, log_level))
+    
+    # Add correlation ID to all log records
+    class CorrelationFilter(logging.Filter):
+        def filter(self, record):
+            record.correlation_id = correlation_id
+            return True
+    
+    logger.addFilter(CorrelationFilter(correlation_id))
+    
+    # Reduce AWS SDK noise
+    if log_level != 'DEBUG':
+        logging.getLogger('boto3').setLevel(logging.WARNING)
+        logging.getLogger('botocore').setLevel(logging.WARNING)
+    
+    return logger
+
 cloudwatch = boto3.client('cloudwatch')
 ses = boto3.client('ses')
 
 def lambda_handler(event, context):
     """Main Lambda handler for MediaTailor daily report"""
     
-    # Load configuration
-    config = json.loads(os.environ.get('REPORT_CONFIG', '{}'))
+    # Setup logging with correlation ID
+    correlation_id = context.aws_request_id
+    logger = setup_logging(correlation_id)
     
-    # Check if this is a test invocation
-    test_mode = event.get('test', False)
-    if test_mode:
-        print("Running in test mode - report will be generated and sent")
+    logger.info("Report generation started", extra={
+        "function_name": context.function_name,
+        "memory_limit": context.memory_limit_in_mb
+    })
     
-    # Get metrics for all configurations
-    report_data = {}
-    for config_name in config.get('mediatailor_configs', []):
-        metrics = get_mediatailor_metrics(config_name, config.get('metrics', []))
-        report_data[config_name] = metrics
+    try:
+        # Load configuration
+        config = json.loads(os.environ.get('REPORT_CONFIG', '{}'))
+        logger.info("Configuration loaded", extra={
+            "config_count": len(config.get('mediatailor_configs', [])),
+            "recipient_count": len(config.get('recipients', []))
+        })
+        
+        # Check if this is a test invocation
+        test_mode = event.get('test', False)
+        if test_mode:
+            logger.info("Running in test mode")
     
-    # Generate PDF and send email
-    pdf_data = generate_pdf_report(report_data)
-    send_email_with_pdf(pdf_data, config.get('recipients', []))
+        # Get metrics for all configurations
+        report_data = {}
+        for config_name in config.get('mediatailor_configs', []):
+            logger.info("Processing configuration", extra={"config_name": config_name})
+            metrics = get_mediatailor_metrics(config_name, config.get('metrics', []), logger)
+            report_data[config_name] = metrics
+        
+        # Generate PDF and send email
+        logger.info("Generating PDF report")
+        pdf_data = generate_pdf_report(report_data)
+        
+        logger.info("Sending email report", extra={"recipient_count": len(config.get('recipients', []))})
+        send_email_with_pdf(pdf_data, config.get('recipients', []), logger)
+        
+        logger.info("Report generation completed successfully")
+        return {
+            'statusCode': 200, 
+            'body': 'Report sent successfully',
+            'reportData': report_data
+        }
     
-    return {
-        'statusCode': 200, 
-        'body': 'Report sent successfully',
-        'reportData': report_data
-    }
+    except Exception as e:
+        logger.error("Report generation failed", extra={
+            "error": str(e),
+            "stack_trace": traceback.format_exc()
+        })
+        raise
 
-def get_mediatailor_metrics(config_name: str, metrics: List[str]) -> Dict:
+def get_mediatailor_metrics(config_name: str, metrics: List[str], logger) -> Dict:
     """Query CloudWatch metrics for a MediaTailor configuration"""
     
     end_time = datetime.utcnow()
@@ -75,7 +124,12 @@ def get_mediatailor_metrics(config_name: str, metrics: List[str]) -> Dict:
                 metric_data[metric_name] = {'average': 0, 'sum': 0}
                 
         except Exception as e:
-            print(f"Error getting metric {metric_name} for {config_name}: {e}")
+            logger.error("Failed to get metric", extra={
+                "metric_name": metric_name,
+                "config_name": config_name,
+                "error": str(e),
+                "stack_trace": traceback.format_exc()
+            })
             metric_data[metric_name] = {'error': str(e)}
     
     # Calculate derived metrics
@@ -105,7 +159,11 @@ def calculate_derived_metrics(metric_data: Dict) -> Dict:
         if 'Avail.FillRate' in metric_data:
             avg_fill_rate_percent = metric_data['Avail.FillRate']['average'] * 100
             if abs(avg_fill_rate_percent - weighted_fill_rate) > 20:
-                print(f"WARNING: Large discrepancy between average fill rate ({avg_fill_rate_percent:.1f}%) and weighted fill rate ({weighted_fill_rate:.1f}%)")
+                logging.getLogger().warning("Large fill rate discrepancy detected", extra={
+                    "avg_fill_rate_percent": avg_fill_rate_percent,
+                    "weighted_fill_rate": weighted_fill_rate,
+                    "discrepancy": abs(avg_fill_rate_percent - weighted_fill_rate)
+                })
     
     return derived
 
@@ -465,11 +523,11 @@ def generate_metrics_descriptions_table(styles) -> List:
 
 
 
-def send_email_with_pdf(pdf_data: bytes, recipients: List[str]):
+def send_email_with_pdf(pdf_data: bytes, recipients: List[str], logger):
     """Send email with PDF attachment via SES"""
     
     if not recipients:
-        print("No recipients configured")
+        logger.warning("No recipients configured for email")
         return
     
     # Load configuration
@@ -512,8 +570,17 @@ def send_email_with_pdf(pdf_data: bytes, recipients: List[str]):
             RawMessage={'Data': msg.as_string()}
         )
         
-        print(f"PDF report sent to {recipients}")
+        logger.info("Email sent successfully", extra={
+            "recipients": recipients,
+            "sender": sender_email,
+            "pdf_size_bytes": len(pdf_data)
+        })
     except Exception as e:
-        print(f"Error sending email: {e}")
+        logger.error("Failed to send email", extra={
+            "recipients": recipients,
+            "sender": sender_email,
+            "error": str(e),
+            "stack_trace": traceback.format_exc()
+        })
         raise
 

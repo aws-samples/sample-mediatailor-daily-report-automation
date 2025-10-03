@@ -7,7 +7,7 @@ Automated daily email reports for MediaTailor ad-fill rate metrics.
 1. **Install CDK**: `npm install -g aws-cdk`
 2. **Verify SES Email**: Verify your sender email in AWS SES console
 3. **Update Configuration**: Copy `config/config.json.example` to `config/config.json` and edit with your settings
-4. **Deploy**: Run `./deploy.sh [region]`
+4. **Deploy**: Run `./deploy.sh up` or `./deploy.sh up --region us-east-1`
 
 ## Documentation
 
@@ -26,15 +26,43 @@ Automated daily email reports for MediaTailor ad-fill rate metrics.
 }
 ```
 
-## CDK Commands
+## Deployment Commands
 
 ```bash
-cdk deploy [--region us-east-1]    # Deploy
-cdk destroy [--region us-east-1]   # Remove
+./deploy.sh up                     # Deploy stack
+./deploy.sh down                   # Destroy stack
+./deploy.sh up --region us-west-2  # Deploy to specific region
+./deploy.sh down --region us-west-2 # Destroy from specific region
 ```
+
+## Direct CDK Commands
+
+```bash
+cdk deploy                         # Deploy
+cdk destroy                        # Remove
+```
+
+## Logging & Monitoring
+
+**Log Levels**: Control via `LOG_LEVEL` environment variable in CDK stack
+- `INFO`: Production (default)
+- `DEBUG`: Development/troubleshooting
+- `WARNING`: Issues only
+- `ERROR`: Errors only
+
+**Log Retention**: 30 days (automatic cleanup)
+
+**Structured Logging**: All logs include correlation IDs for request tracing
 
 ## Quick Test
 
 ```bash
 aws lambda invoke --function-name MediaTailorReportStack-MediaTailorReportFunction output.json
 ```
+
+## Security Features
+
+- Structured logging with correlation IDs
+- Error handling with full stack traces
+- 30-day log retention for cost control
+- Production-ready deployment scripts with error handling

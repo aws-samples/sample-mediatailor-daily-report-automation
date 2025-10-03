@@ -6,6 +6,7 @@ from aws_cdk import (
     aws_events_targets as targets,
     aws_iam as iam,
     aws_ses as ses,
+    aws_logs as logs,
     CfnOutput
 )
 from constructs import Construct
@@ -37,8 +38,10 @@ class MediaTailorReportStack(Stack):
             memory_size=512,
             architecture=_lambda.Architecture.ARM_64,
             environment={
-                "REPORT_CONFIG": json.dumps(config)
-            }
+                "REPORT_CONFIG": json.dumps(config),
+                "LOG_LEVEL": "INFO"  # Change to DEBUG for development
+            },
+            log_retention=logs.RetentionDays.ONE_MONTH
         )
 
         # IAM permissions

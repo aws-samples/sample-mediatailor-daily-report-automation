@@ -3,7 +3,7 @@ import boto3
 import os
 import logging
 import traceback
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
@@ -15,24 +15,42 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
 
+class CorrelationFilter(logging.Filter):
+    """Logging filter that adds correlation ID to all log records."""
+    
+    def __init__(self, correlation_id: str) -> None:
+        super().__init__()
+        self.correlation_id = correlation_id
+    
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.correlation_id = self.correlation_id
+        return True
+
 # Setup structured logging
-def setup_logging(correlation_id: str):
+def setup_logging(correlation_id=None):
     log_level = os.environ.get('LOG_LEVEL', 'INFO')
     logger = logging.getLogger()
-    logger.setLevel(getattr(logging, log_level))
     
-    # Add correlation ID to all log records
-    class CorrelationFilter(logging.Filter):
-        def filter(self, record):
-            record.correlation_id = correlation_id
-            return True
+    # Validate log level
+    valid_levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
+    if log_level not in valid_levels:
+        log_level = 'INFO'
     
-    logger.addFilter(CorrelationFilter(correlation_id))
+    try:
+        logger.setLevel(getattr(logging, log_level))
+    except AttributeError:
+        logger.setLevel(logging.INFO)
+    
+    # Add correlation filter if provided
+    if correlation_id:
+        logger.addFilter(CorrelationFilter(correlation_id))
     
     # Reduce AWS SDK noise
     if log_level != 'DEBUG':
-        logging.getLogger('boto3').setLevel(logging.WARNING)
-        logging.getLogger('botocore').setLevel(logging.WARNING)
+        boto3_logger = logging.getLogger('boto3')
+        botocore_logger = logging.getLogger('botocore')
+        boto3_logger.setLevel(logging.WARNING)
+        botocore_logger.setLevel(logging.WARNING)
     
     return logger
 
@@ -46,18 +64,41 @@ def lambda_handler(event, context):
     correlation_id = context.aws_request_id
     logger = setup_logging(correlation_id)
     
+    # Sanitize event source to prevent log injection
+    event_source = 'unknown'
+    if event and 'source' in event:
+        raw_source = str(event['source'])[:50]
+        event_source = ''.join(c for c in raw_source if c.isprintable() and c not in '\n\r\t')
+    
+    logger.info("Lambda function invoked", extra={
+        "function_name": context.function_name,
+        "log_level": os.environ.get('LOG_LEVEL', 'INFO'),
+        "event_source": event_source
+    })
+    
     logger.info("Report generation started", extra={
         "function_name": context.function_name,
-        "memory_limit": context.memory_limit_in_mb
+        "memory_limit": context.memory_limit_in_mb,
+        "remaining_time_ms": context.get_remaining_time_in_millis(),
+        "event_keys": list(event.keys()) if event else []
     })
     
     try:
         # Load configuration
-        config = json.loads(os.environ.get('REPORT_CONFIG', '{}'))
+        config_str = os.environ.get('REPORT_CONFIG', '{}')
+        logger.debug("Loading configuration from environment", extra={"config_length": len(config_str)})
+        
+        config = json.loads(config_str)
         logger.info("Configuration loaded", extra={
             "config_count": len(config.get('mediatailor_configs', [])),
             "recipient_count": len(config.get('recipients', []))
         })
+        
+        # Validate configuration
+        if not config.get('mediatailor_configs'):
+            logger.warning("No MediaTailor configurations found")
+        if not config.get('recipients'):
+            logger.warning("No email recipients configured")
         
         # Check if this is a test invocation
         test_mode = event.get('test', False)
@@ -75,7 +116,9 @@ def lambda_handler(event, context):
         logger.info("Generating PDF report")
         pdf_data = generate_pdf_report(report_data)
         
-        logger.info("Sending email report", extra={"recipient_count": len(config.get('recipients', []))})
+        logger.info("Sending email report", extra={
+            "recipient_count": len(config.get('recipients', []))
+        })
         send_email_with_pdf(pdf_data, config.get('recipients', []), logger)
         
         logger.info("Report generation completed successfully")
@@ -95,7 +138,7 @@ def lambda_handler(event, context):
 def get_mediatailor_metrics(config_name: str, metrics: List[str], logger) -> Dict:
     """Query CloudWatch metrics for a MediaTailor configuration"""
     
-    end_time = datetime.utcnow()
+    end_time = datetime.now(timezone.utc)
     start_time = end_time - timedelta(days=1)
     
     metric_data = {}
@@ -133,19 +176,20 @@ def get_mediatailor_metrics(config_name: str, metrics: List[str], logger) -> Dic
             metric_data[metric_name] = {'error': str(e)}
     
     # Calculate derived metrics
-    metric_data.update(calculate_derived_metrics(metric_data, logger, config_name))
+    calculate_derived_metrics(metric_data, logger, config_name)
     
     return metric_data
 
-def calculate_derived_metrics(metric_data: Dict, logger, config_name: str) -> Dict:
-    """Calculate weighted fill rate"""
-    
-    derived = {}
+def calculate_derived_metrics(metric_data: Dict, logger, config_name: str) -> None:
+    """Calculate weighted fill rate and add to metric_data"""
     
     try:
         # Calculate Weighted Fill Rate (more accurate than simple average)
-        if ('Avail.Duration' in metric_data and 'Avail.FilledDuration' in metric_data and 
-            metric_data['Avail.Duration'].get('sum', 0) > 0):
+        has_duration = 'Avail.Duration' in metric_data
+        has_filled_duration = 'Avail.FilledDuration' in metric_data
+        duration_sum = metric_data.get('Avail.Duration', {}).get('sum', 0)
+        
+        if has_duration and has_filled_duration and duration_sum > 0:
             
             total_duration = metric_data['Avail.Duration']['sum']
             filled_duration = metric_data['Avail.FilledDuration']['sum']
@@ -157,11 +201,11 @@ def calculate_derived_metrics(metric_data: Dict, logger, config_name: str) -> Di
                     "total_duration": total_duration,
                     "filled_duration": filled_duration
                 })
-                return derived
+                return
             
             weighted_fill_rate = (filled_duration / total_duration) * 100
             
-            derived['Avail.FillRate (Weighted)'] = {
+            metric_data['Avail.FillRate (Weighted)'] = {
                 'average': round(weighted_fill_rate, 1),
                 'sum': round(weighted_fill_rate, 1)
             }
@@ -206,8 +250,6 @@ def calculate_derived_metrics(metric_data: Dict, logger, config_name: str) -> Di
             "stack_trace": traceback.format_exc(),
             "available_metrics": list(metric_data.keys())
         })
-    
-    return derived
 
 def generate_pdf_report(report_data: Dict) -> bytes:
     """Generate PDF report"""
@@ -226,8 +268,6 @@ def generate_pdf_report(report_data: Dict) -> bytes:
     styles = getSampleStyleSheet()
     story = []
     
-
-    
     # Main title with professional styling
     title_style = ParagraphStyle(
         'CustomTitle',
@@ -241,8 +281,6 @@ def generate_pdf_report(report_data: Dict) -> bytes:
         borderPadding=10,
         backColor=colors.HexColor('#F8F9FA')
     )
-    
-
     
     title = Paragraph("MediaTailor Daily Report", title_style)
     
@@ -265,13 +303,16 @@ def generate_pdf_report(report_data: Dict) -> bytes:
             backColor=colors.HexColor('#F8F9FA')
         )
         
-        summary_text = f"This report covers {len(report_data)} MediaTailor configuration(s). Each section provides detailed metrics including fill rates, ad duration statistics, and system health indicators."
+        summary_text = (f"This report covers {len(report_data)} MediaTailor "
+                        f"configuration(s). Each section provides detailed metrics "
+                        f"including fill rates, ad duration statistics, and system "
+                        f"health indicators.")
         summary = Paragraph(summary_text, summary_style)
         story.append(summary)
         story.append(Spacer(1, 0.2*inch))
     
     # Single reporting period statement
-    end_time = datetime.utcnow()
+    end_time = datetime.now(timezone.utc)
     start_time = end_time - timedelta(days=1)
     
     period_style = ParagraphStyle(
@@ -287,7 +328,9 @@ def generate_pdf_report(report_data: Dict) -> bytes:
         backColor=colors.HexColor('#F8F9FA')
     )
     
-    period_text = f"24-Hour Report: {start_time.strftime('%B %d, %Y %H:%M UTC')} to {end_time.strftime('%B %d, %Y %H:%M UTC')}"
+    date_format = '%B %d, %Y %H:%M UTC'
+    period_text = (f"24-Hour Report: {start_time.strftime(date_format)} "
+                   f"to {end_time.strftime(date_format)}")
     period = Paragraph(period_text, period_style)
     story.append(period)
     story.append(Spacer(1, 0.25*inch))
@@ -532,12 +575,12 @@ def generate_metrics_descriptions_table(styles) -> List:
     )
     elements.append(Paragraph("Metrics Definitions", header_style))
     
-    # Create descriptions table
-    table_data = [['Metric', 'Description']]
-    
-    for metric, description in metric_descriptions.items():
-        desc_para = Paragraph(description, styles['Normal'])
-        table_data.append([metric, desc_para])
+    # Create descriptions table with optimized performance
+    normal_style = styles['Normal']  # Cache style lookup
+    table_data = [['Metric', 'Description']] + [
+        [metric, Paragraph(description, normal_style)]
+        for metric, description in metric_descriptions.items()
+    ]
     
     table = Table(table_data, colWidths=[2.2*inch, 4.3*inch])
     
@@ -562,8 +605,6 @@ def generate_metrics_descriptions_table(styles) -> List:
     elements.append(table)
     
     return elements
-
-
 
 def send_email_with_pdf(pdf_data: bytes, recipients: List[str], logger):
     """Send email with PDF attachment via SES"""

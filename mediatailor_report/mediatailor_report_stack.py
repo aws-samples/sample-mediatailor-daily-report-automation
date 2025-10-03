@@ -20,11 +20,46 @@ class MediaTailorReportStack(Stack):
 
         # Load configuration from file
         config_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'config.json')
-        with open(config_path, 'r') as f:
-            config = json.load(f)
         
-        # Use sender email from config
-        sender_email = config.get('sender_email', config['recipients'][0])
+        try:
+            if not os.path.exists(config_path):
+                raise FileNotFoundError(f"Configuration file not found: {config_path}. Please copy config.json.example to config.json and update with your settings.")
+            
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+                
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON in configuration file {config_path}: {e}")
+        except PermissionError:
+            raise PermissionError(f"Permission denied reading configuration file: {config_path}")
+        except Exception as e:
+            raise RuntimeError(f"Failed to load configuration from {config_path}: {e}")
+        
+        # Validate required configuration
+        required_fields = ['recipients']
+        for field in required_fields:
+            if field not in config or not config[field]:
+                raise ValueError(f"Missing required configuration field: {field}")
+        
+        # Validate recipients list
+        if not isinstance(config['recipients'], list) or len(config['recipients']) == 0:
+            raise ValueError("Recipients must be a non-empty list of email addresses")
+        
+        # Use sender email from config with proper validation
+        sender_email = config.get('sender_email')
+        if not sender_email:
+            sender_email = config['recipients'][0]
+        
+        # Basic email validation
+        def validate_email(email):
+            return '@' in email and '.' in email.split('@')[-1]
+        
+        if not validate_email(sender_email):
+            raise ValueError(f"Invalid sender email format: {sender_email}")
+        
+        for recipient in config['recipients']:
+            if not validate_email(recipient):
+                raise ValueError(f"Invalid recipient email format: {recipient}")
         
         # SES Email Identity
         email_identity = ses.EmailIdentity(self, "SenderEmailIdentity",

@@ -36,11 +36,31 @@ source venv/bin/activate
 # Install Python dependencies
 echo "Installing dependencies..."
 pip install -r requirements.txt
+if [ $? -ne 0 ]; then
+    echo "Error: Failed to install Python dependencies"
+    exit 1
+fi
 
 # Bootstrap CDK (if first time)
 echo "Bootstrapping CDK (if needed)..."
-cdk bootstrap aws://$(aws sts get-caller-identity --query Account --output text)/$REGION
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+if [ $? -ne 0 ]; then
+    echo "Error: Failed to get AWS account ID. Check your AWS credentials."
+    exit 1
+fi
+
+cdk bootstrap "aws://${ACCOUNT_ID}/${REGION}"
+if [ $? -ne 0 ]; then
+    echo "Error: CDK bootstrap failed"
+    exit 1
+fi
 
 # Deploy stack
 echo "Deploying stack..."
-cdk deploy --context region=$REGION --require-approval never
+cdk deploy --context region="$REGION" --require-approval never
+if [ $? -ne 0 ]; then
+    echo "Error: CDK deployment failed"
+    exit 1
+fi
+
+echo "Deployment completed successfully!"

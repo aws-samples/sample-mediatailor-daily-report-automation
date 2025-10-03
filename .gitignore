@@ -47,3 +47,6 @@ output.json
 
 # Logs
 *.log
+
+# Keep Amazon Q rules for team consistency
+# .amazonq/rules/ - committed for team standards

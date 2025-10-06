@@ -60,6 +60,17 @@ cdk destroy                        # Remove
 aws lambda invoke --function-name MediaTailorReportStack-MediaTailorReportFunction output.json
 ```
 
+## Sample Report
+
+A sample PDF report is available at [samples/mediatailor-report-year-month-date.pdf](samples/mediatailor-report-year-month-date.pdf) showing the expected output format with:
+- Configuration-specific metrics tables
+- Fill rate percentages with status indicators
+- Duration metrics (hours/minutes/seconds)
+- Error counts and latency measurements
+- Professional formatting with AWS branding
+
+Use this sample to understand the report structure before deploying.
+
 ## Security Features
 
 - Structured logging with correlation IDs

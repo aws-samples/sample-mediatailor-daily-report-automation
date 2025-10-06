@@ -481,21 +481,24 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles) -> List
                     rate_percent = avg
                     
                 if rate_percent == 0:
-                    status_text = "⚪ No Data"
+                    status_text = "■ No Data"
                 elif rate_percent < 70:
                     status_text = "🔴 Critical"
                 elif rate_percent < 80:
                     status_text = "🟡 Low"
+            elif metric in DURATION_METRICS:
+                if sum_val == 0:
+                    status_text = "■ No Data"
             elif metric in LATENCY_METRICS:
                 if avg == 0:
-                    status_text = "⚪ No Data"
+                    status_text = "■ No Data"
                 elif avg > 500:
                     status_text = "🔴 High Latency"
                 elif avg > 300:
                     status_text = "🟡 Slow Response"
             elif metric in COUNT_METRICS:
                 if sum_val == 0:
-                    status_text = "⚪ No Data"
+                    status_text = "■ No Data"
                 elif 'Errors' in metric and sum_val > 100:
                     status_text = "🔴 High Errors"
                 elif 'Timeouts' in metric and sum_val > 50:

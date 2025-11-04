@@ -42,7 +42,7 @@ esac
 
 # Get region from AWS configuration if not specified
 if [ -z "$REGION" ]; then
-    REGION=$(aws configure get region 2>/dev/null)
+    REGION=$(aws configure get region 2>/dev/null || echo "")
     if [ -z "$REGION" ]; then
         REGION="$AWS_REGION"
     fi
@@ -53,12 +53,31 @@ if [ -z "$REGION" ]; then
     exit 1
 fi
 
+# Validate region format (basic security check)
+if [[ ! "$REGION" =~ ^[a-z0-9-]+$ ]] || [ ${#REGION} -gt 20 ]; then
+    echo "Error: Invalid region format: $REGION"
+    exit 1
+fi
+
 echo "Region: $REGION"
 
-# Check if config.json exists
+# Check if config.json exists and validate
 if [ ! -f "config/config.json" ]; then
     echo "Error: config/config.json not found!"
     echo "Please copy config/config.json.example to config/config.json and update with your values."
+    exit 1
+fi
+
+# Basic security check for config file
+if [ ! -r "config/config.json" ]; then
+    echo "Error: Cannot read config/config.json (permission denied)"
+    exit 1
+fi
+
+# Check file size to prevent excessive memory usage
+CONFIG_SIZE=$(stat -f%z "config/config.json" 2>/dev/null || stat -c%s "config/config.json" 2>/dev/null || echo "0")
+if [ "$CONFIG_SIZE" -gt 100000 ]; then
+    echo "Error: Configuration file too large (${CONFIG_SIZE} bytes, max 100KB)"
     exit 1
 fi
 
@@ -117,9 +136,15 @@ case $ACTION in
     up)
         # Bootstrap CDK (if first time)
         echo "Bootstrapping CDK (if needed)..."
-        ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-        if [ $? -ne 0 ]; then
+        ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null)
+        if [ $? -ne 0 ] || [ -z "$ACCOUNT_ID" ]; then
             echo "Error: Failed to get AWS account ID. Check your AWS credentials."
+            exit 1
+        fi
+        
+        # Validate account ID format
+        if [[ ! "$ACCOUNT_ID" =~ ^[0-9]{12}$ ]]; then
+            echo "Error: Invalid AWS account ID format"
             exit 1
         fi
 

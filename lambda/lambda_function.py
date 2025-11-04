@@ -37,8 +37,11 @@ def setup_logging(correlation_id=None):
         log_level = 'INFO'
     
     try:
-        logger.setLevel(getattr(logging, log_level))
-    except AttributeError:
+        numeric_level = getattr(logging, log_level.upper())
+        if not isinstance(numeric_level, int):
+            raise AttributeError("Invalid log level")
+        logger.setLevel(numeric_level)
+    except (AttributeError, TypeError):
         logger.setLevel(logging.INFO)
     
     # Add correlation filter if provided
@@ -68,9 +71,12 @@ def lambda_handler(event, context):
     
     # Sanitize event source to prevent log injection
     event_source = 'unknown'
-    if event and 'source' in event:
+    if event and isinstance(event, dict) and 'source' in event:
         raw_source = str(event['source'])[:50]
-        event_source = ''.join(c for c in raw_source if c.isprintable() and c not in '\n\r\t')
+        # Remove potentially dangerous characters
+        event_source = ''.join(c for c in raw_source if c.isalnum() or c in '.-_')
+        if not event_source:
+            event_source = 'sanitized'
     
     logger.info("Lambda function invoked", extra={
         "function_name": context.function_name,
@@ -88,9 +94,16 @@ def lambda_handler(event, context):
     try:
         # Load configuration
         config_str = os.environ.get('REPORT_CONFIG', '{}')
+        if len(config_str) > 10000:  # Prevent excessive config size
+            raise ValueError("Configuration too large")
         logger.debug("Loading configuration from environment", extra={"config_length": len(config_str)})
         
-        config = json.loads(config_str)
+        try:
+            config = json.loads(config_str)
+            if not isinstance(config, dict):
+                raise ValueError("Configuration must be a JSON object")
+        except json.JSONDecodeError:
+            raise ValueError("Invalid configuration JSON")
         logger.info("Configuration loaded", extra={
             "config_count": len(config.get('mediatailor_configs', [])),
             "recipient_count": len(config.get('recipients', []))
@@ -109,10 +122,23 @@ def lambda_handler(event, context):
     
         # Get metrics for all configurations
         report_data = {}
-        for config_name in config.get('mediatailor_configs', []):
-            logger.info("Processing configuration", extra={"config_name": config_name})
-            metrics = get_mediatailor_metrics(config_name, config.get('metrics', []), logger)
-            report_data[config_name] = metrics
+        mediatailor_configs = config.get('mediatailor_configs', [])
+        if not isinstance(mediatailor_configs, list):
+            raise ValueError("mediatailor_configs must be a list")
+        
+        for config_name in mediatailor_configs:
+            if not isinstance(config_name, str) or len(config_name) > 100:
+                logger.warning("Skipping invalid config name", extra={"config_type": type(config_name).__name__})
+                continue
+            # Sanitize config name
+            safe_config_name = ''.join(c for c in config_name if c.isalnum() or c in '.-_')
+            if not safe_config_name:
+                logger.warning("Skipping config with invalid characters")
+                continue
+            
+            logger.info("Processing configuration", extra={"config_name": safe_config_name})
+            metrics = get_mediatailor_metrics(safe_config_name, config.get('metrics', []), logger)
+            report_data[safe_config_name] = metrics
         
         # Generate PDF and send email
         logger.info("Generating PDF report")
@@ -130,12 +156,15 @@ def lambda_handler(event, context):
             'reportData': report_data
         }
     
+    except json.JSONDecodeError as e:
+        logger.error("Invalid configuration JSON", extra={"error": "Configuration parsing failed"})
+        return {'statusCode': 500, 'body': 'Configuration error'}
+    except KeyError as e:
+        logger.error("Missing configuration key", extra={"error": "Required configuration missing"})
+        return {'statusCode': 500, 'body': 'Configuration error'}
     except Exception as e:
-        logger.error("Report generation failed", extra={
-            "error": str(e),
-            "stack_trace": traceback.format_exc()
-        })
-        raise
+        logger.error("Report generation failed", extra={"error": "Internal processing error"})
+        return {'statusCode': 500, 'body': 'Internal error'}
 
 def get_mediatailor_metrics(config_name: str, metrics: List[str], logger) -> Dict:
     """Query CloudWatch metrics for a MediaTailor configuration"""
@@ -172,10 +201,9 @@ def get_mediatailor_metrics(config_name: str, metrics: List[str], logger) -> Dic
             logger.error("Failed to get metric", extra={
                 "metric_name": metric_name,
                 "config_name": config_name,
-                "error": str(e),
-                "stack_trace": traceback.format_exc()
+                "error": "CloudWatch API error"
             })
-            metric_data[metric_name] = {'error': str(e)}
+            metric_data[metric_name] = {'error': 'Data unavailable'}
     
     # Calculate derived metrics
     derived_metrics = calculate_derived_metrics(metric_data, logger, config_name)
@@ -243,9 +271,7 @@ def calculate_derived_metrics(metric_data: Dict, logger, config_name: str) -> Di
     except Exception as e:
         logger.error("Failed to calculate derived metrics", extra={
             "config_name": config_name,
-            "error": str(e),
-            "stack_trace": traceback.format_exc(),
-            "available_metrics": list(metric_data.keys())
+            "error": "Calculation error"
         })
     
     return derived_metrics
@@ -662,10 +688,8 @@ def send_email_with_pdf(pdf_data: bytes, recipients: List[str], logger):
         })
     except Exception as e:
         logger.error("Failed to send email", extra={
-            "recipients": recipients,
-            "sender": sender_email,
-            "error": str(e),
-            "stack_trace": traceback.format_exc()
+            "recipient_count": len(recipients),
+            "error": "Email delivery failed"
         })
-        raise
+        raise RuntimeError("Email delivery failed")
 

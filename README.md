@@ -14,7 +14,8 @@ Automated daily email reports for MediaTailor ad-fill rate metrics.
 - [📋 Configuration Guide](docs/CONFIGURATION.md) - Setup and configuration options
 - [📊 Metrics Reference](docs/METRICS.md) - Available metrics and their meanings
 - [🧪 Testing Guide](docs/TESTING.md) - How to test the system
-- [🏗️ Architecture](ARCHITECTURE.md) - System architecture details
+- [🏗️ Architecture](docs/ARCHITECTURE.md) - System architecture details
+- [🔒 Security Fixes](docs/SECURITY_FIXES.md) - Security improvements applied
 
 ## Configuration Example
 

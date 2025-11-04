@@ -25,15 +25,24 @@ class MediaTailorReportStack(Stack):
             if not os.path.exists(config_path):
                 raise FileNotFoundError(f"Configuration file not found: {config_path}. Please copy config.json.example to config.json and update with your settings.")
             
-            with open(config_path, 'r') as f:
+            # Validate file size to prevent excessive memory usage
+            file_size = os.path.getsize(config_path)
+            if file_size > 100000:  # 100KB limit
+                raise ValueError(f"Configuration file too large: {file_size} bytes")
+            
+            with open(config_path, 'r', encoding='utf-8') as f:
                 config = json.load(f)
+                if not isinstance(config, dict):
+                    raise ValueError("Configuration must be a JSON object")
                 
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Invalid JSON in configuration file {config_path}: {e}")
+        except json.JSONDecodeError:
+            raise ValueError(f"Invalid JSON in configuration file {config_path}")
         except PermissionError:
             raise PermissionError(f"Permission denied reading configuration file: {config_path}")
-        except Exception as e:
-            raise RuntimeError(f"Failed to load configuration from {config_path}: {e}")
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Configuration file not found: {config_path}")
+        except Exception:
+            raise RuntimeError(f"Failed to load configuration from {config_path}")
         
         # Validate required configuration
         required_fields = ['recipients']
@@ -44,22 +53,33 @@ class MediaTailorReportStack(Stack):
         # Validate recipients list
         if not isinstance(config['recipients'], list) or len(config['recipients']) == 0:
             raise ValueError("Recipients must be a non-empty list of email addresses")
+        if len(config['recipients']) > 50:
+            raise ValueError("Too many recipients (maximum 50 allowed)")
         
         # Use sender email from config with proper validation
         sender_email = config.get('sender_email')
         if not sender_email:
             sender_email = config['recipients'][0]
         
-        # Basic email validation
+        # Basic email validation with security checks
         def validate_email(email):
-            return '@' in email and '.' in email.split('@')[-1]
+            if not isinstance(email, str) or len(email) > 254:
+                return False
+            if email.count('@') != 1:
+                return False
+            local, domain = email.split('@')
+            if not local or not domain or len(local) > 64:
+                return False
+            return '.' in domain and len(domain) <= 253
         
         if not validate_email(sender_email):
-            raise ValueError(f"Invalid sender email format: {sender_email}")
+            raise ValueError("Invalid sender email format")
         
-        for recipient in config['recipients']:
+        for i, recipient in enumerate(config['recipients']):
             if not validate_email(recipient):
-                raise ValueError(f"Invalid recipient email format: {recipient}")
+                raise ValueError(f"Invalid recipient email format at index {i}")
+            if len(config['recipients']) > 50:  # Limit recipient count
+                raise ValueError("Too many recipients (max 50)")
         
         # SES Email Identity
         email_identity = ses.EmailIdentity(self, "SenderEmailIdentity",

@@ -1,4 +1,4 @@
-# CDK
+# CDK build artifacts - DO NOT SHARE WITH CUSTOMERS
 cdk.out/
 *.swp
 *.swo
@@ -30,7 +30,6 @@ MANIFEST
 venv/
 env/
 ENV/
-.venv
 
 # IDE
 .vscode/
@@ -42,12 +41,11 @@ ENV/
 .DS_Store
 Thumbs.db
 
-# Configuration files with sensitive data
+# Configuration (contains sensitive data)
 config/config.json
-output.json
 
 # Logs
 *.log
 
-# Keep Amazon Q rules for team consistency
-# .amazonq/rules/ - committed for team standards
+# Lambda test output
+output.json

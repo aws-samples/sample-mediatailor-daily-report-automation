@@ -19,10 +19,10 @@
     "Origin.Errors"
   ],
   "recipients": [
-    "user1@example.com",
-    "user2@example.com"
+    "recipient1@yourdomain.com",
+    "recipient2@yourdomain.com"
   ],
-  "sender_email": "noreply@example.com",
+  "sender_email": "mediatailor-reports@yourdomain.com",
   "schedule": {
     "hour": "9",
     "minute": "0"

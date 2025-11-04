@@ -27,8 +27,8 @@ Edit `config.json`:
     "GetManifest.Errors",
     "Origin.Errors"
   ],
-  "recipients": ["email@example.com"],
-  "sender_email": "noreply@example.com",
+  "recipients": ["recipient@yourdomain.com"],
+  "sender_email": "mediatailor-reports@yourdomain.com",
   "schedule": {
     "hour": "16",
     "minute": "0"

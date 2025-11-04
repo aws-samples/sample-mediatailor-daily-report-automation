@@ -22,8 +22,8 @@ Automated daily email reports for MediaTailor ad-fill rate metrics.
 ```json
 {
   "mediatailor_configs": ["config-1", "config-2"],
-  "recipients": ["email@example.com"],
-  "sender_email": "noreply@example.com"
+  "recipients": ["recipient@yourdomain.com"],
+  "sender_email": "mediatailor-reports@yourdomain.com"
 }
 ```
 

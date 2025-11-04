@@ -5,9 +5,9 @@ Automated daily email reports for MediaTailor ad-fill rate metrics.
 ## Quick Start
 
 1. **Install CDK**: `npm install -g aws-cdk`
-2. **Verify SES Email**: Verify your sender email in AWS SES console
-3. **Update Configuration**: Copy `config/config.json.example` to `config/config.json` and edit with your settings
-4. **Deploy**: Run `./deploy.sh up` or `./deploy.sh up --region us-east-1`
+2. **Update Configuration**: Copy `config/config.json.example` to `config/config.json` and edit with your settings
+3. **Deploy**: Run `./deploy.sh up` or `./deploy.sh up --region us-east-1`
+4. **Verify Email**: Check your sender email inbox and click the AWS SES verification link
 
 ## Documentation
 

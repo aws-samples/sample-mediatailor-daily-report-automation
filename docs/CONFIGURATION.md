@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-**Required:** Verify your sender email in AWS SES console before deployment.
+**Email Verification:** CDK will automatically create the SES email identity during deployment. You must verify the email by clicking the verification link sent by AWS SES to complete the setup.
 
 ## Configuration File
 
@@ -41,7 +41,7 @@ Edit `config.json`:
 - `mediatailor_configs`: List of MediaTailor configuration names
 - `metrics`: CloudWatch metrics to include in reports
 - `recipients`: Email addresses to receive reports
-- `sender_email`: Email address to send reports from (must be verified in SES)
+- `sender_email`: Email address to send reports from (CDK creates identity, you verify via email link)
 - `schedule`: Cron schedule for daily reports
 
 ## Schedule Examples

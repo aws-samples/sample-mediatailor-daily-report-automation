@@ -43,6 +43,14 @@ cdk deploy                         # Deploy
 cdk destroy                        # Remove
 ```
 
+## Generate Documentation PDFs
+
+```bash
+python generate_docs.py                           # Generate all documentation PDFs
+python generate_docs.py --customer-guide-only     # Generate customer installation guide only
+python generate_docs.py --output-dir dist         # Custom output directory
+```
+
 ## Logging & Monitoring
 
 **Log Levels**: Control via `LOG_LEVEL` environment variable in CDK stack

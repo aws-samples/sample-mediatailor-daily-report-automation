@@ -49,3 +49,7 @@ config/config.json
 
 # Lambda test output
 output.json
+
+# Generated documentation PDFs
+docs/pdf/
+*.pdf

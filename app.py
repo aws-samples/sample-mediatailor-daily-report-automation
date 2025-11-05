@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import aws_cdk as cdk
+from aws_cdk import Aspects
+from cdk_nag import AwsSolutionsChecks
 from mediatailor_report.mediatailor_report_stack import MediaTailorReportStack
 import sys
 
@@ -21,6 +23,9 @@ try:
             region=region
         )
     )
+    
+    # Add AWS Solutions security checks
+    Aspects.of(app).add(AwsSolutionsChecks(verbose=True))
     
     app.synth()
     

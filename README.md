@@ -11,11 +11,12 @@ Automated daily email reports for MediaTailor ad-fill rate metrics.
 
 ## Documentation
 
+- [📖 Installation Guide](docs/INSTALLATION_GUIDE.md) - Complete installation and setup instructions
 - [📋 Configuration Guide](docs/CONFIGURATION.md) - Setup and configuration options
 - [📊 Metrics Reference](docs/METRICS.md) - Available metrics and their meanings
 - [🧪 Testing Guide](docs/TESTING.md) - How to test the system
 - [🏗️ Architecture](docs/ARCHITECTURE.md) - System architecture details
-- [🔒 Security Fixes](docs/SECURITY_FIXES.md) - Security improvements applied
+- [🔒 Security](docs/SECURITY.md) - Security measures and best practices
 
 ## Configuration Example
 
@@ -82,7 +83,11 @@ Use this sample to understand the report structure before deploying.
 
 ## Security Features
 
+- AWS security best practices validation
 - Structured logging with correlation IDs
-- Error handling with full stack traces
+- Comprehensive error handling
 - 30-day log retention for cost control
-- Production-ready deployment scripts with error handling
+- Production-ready deployment scripts
+- Input validation and sanitization
+- Least privilege IAM permissions
+- Container security (pinned base images, non-root user, health checks)

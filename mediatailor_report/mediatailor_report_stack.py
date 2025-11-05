@@ -10,6 +10,7 @@ from aws_cdk import (
     CfnOutput
 )
 from constructs import Construct
+from cdk_nag import NagSuppressions
 import json
 import os
 
@@ -101,15 +102,38 @@ class MediaTailorReportStack(Stack):
             )
         )
 
-        # IAM permissions
+        # IAM permissions - scoped to MediaTailor namespace
         lambda_function.add_to_role_policy(iam.PolicyStatement(
             effect=iam.Effect.ALLOW,
             actions=[
                 "cloudwatch:GetMetricStatistics",
                 "cloudwatch:ListMetrics"
             ],
-            resources=["*"]
+            resources=["*"],
+            conditions={
+                "StringEquals": {
+                    "cloudwatch:namespace": "AWS/MediaTailor"
+                }
+            }
         ))
+        
+        # cdk-nag suppressions
+        NagSuppressions.add_resource_suppressions(
+            lambda_function,
+            [
+                {
+                    "id": "AwsSolutions-IAM4",
+                    "reason": "AWSLambdaBasicExecutionRole is AWS managed policy for Lambda CloudWatch Logs access - standard practice for Lambda functions",
+                    "appliesTo": ["Policy::arn:<AWS::Partition>:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"]
+                },
+                {
+                    "id": "AwsSolutions-IAM5",
+                    "reason": "CloudWatch GetMetricStatistics/ListMetrics APIs require Resource:* per AWS API design. Scoped to AWS/MediaTailor namespace via condition to limit blast radius",
+                    "appliesTo": ["Resource::*"]
+                }
+            ],
+            apply_to_children=True
+        )
 
         lambda_function.add_to_role_policy(iam.PolicyStatement(
             effect=iam.Effect.ALLOW,

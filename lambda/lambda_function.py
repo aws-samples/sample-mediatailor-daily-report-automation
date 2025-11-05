@@ -687,7 +687,7 @@ def send_email_with_pdf(pdf_data: bytes, recipients: List[str], logger):
             "pdf_size_bytes": len(pdf_data)
         })
     except Exception as e:
-        logger.error("Failed to send email", extra={
+        logger.warning("Failed to send email, re-raising exception", extra={
             "recipient_count": len(recipients),
             "error": "Email delivery failed"
         })

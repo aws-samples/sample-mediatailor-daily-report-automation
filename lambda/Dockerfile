@@ -12,7 +12,7 @@ USER 1000
 
 # Health check for container
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD python -c "import lambda_function" || exit 1
+  CMD ["python", "-c", "import lambda_function"]
 
 # Set the CMD to your handler
 CMD ["lambda_function.lambda_handler"]

@@ -1,0 +1,64 @@
+# Third-Party Licenses
+
+This project uses the following third-party dependencies:
+
+## CDK/Infrastructure Dependencies (requirements.txt)
+
+### Apache License 2.0
+- aws-cdk-lib (>=2.100.0)
+- aws-cdk.asset-awscli-v1
+- aws-cdk.asset-node-proxy-agent-v6
+- aws-cdk.cloud-assembly-schema
+- cdk-nag (>=2.27.0)
+- constructs (>=10.0.0)
+- importlib_resources
+- jsii
+
+### MIT License
+- attrs
+- cattrs
+- publication
+- six
+- typeguard
+
+### BSD License
+- python-dateutil (dual licensed: Apache 2.0 / BSD)
+
+### Python Software Foundation License 2.0
+- typing_extensions
+
+## Lambda Runtime Dependencies (lambda/requirements.txt)
+
+### Apache License 2.0
+- boto3 (>=1.26.0)
+- aws-cdk-lib (>=2.100.0)
+- constructs (>=10.0.0)
+
+### BSD License
+- reportlab (>=3.6.0)
+
+## Docker Base Image
+
+### Apache License 2.0
+- AWS Lambda Python Runtime (public.ecr.aws/lambda/python:3.9-arm64)
+
+---
+
+## License Texts
+
+### Apache License 2.0
+Full text: https://www.apache.org/licenses/LICENSE-2.0
+
+### MIT License
+Full text: https://opensource.org/licenses/MIT
+
+### BSD License
+Full text: https://opensource.org/licenses/BSD-3-Clause
+
+### Python Software Foundation License 2.0
+Full text: https://docs.python.org/3/license.html
+
+---
+
+All third-party dependencies use permissive licenses that allow commercial use, 
+modification, and distribution without requiring license inheritance or copyleft obligations.

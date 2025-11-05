@@ -7,8 +7,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy function code
 COPY lambda_function.py ${LAMBDA_TASK_ROOT}
 
-# Lambda base images run as non-root user by default (sbx_user1051)
-# No additional USER directive needed
+# Explicitly set non-root user (Lambda base image default)
+USER 1000
 
 # Health check for container
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \

@@ -102,19 +102,14 @@ class MediaTailorReportStack(Stack):
             )
         )
 
-        # IAM permissions - scoped to MediaTailor namespace
+        # IAM permissions - CloudWatch GetMetricStatistics doesn't support resource-level permissions
         lambda_function.add_to_role_policy(iam.PolicyStatement(
             effect=iam.Effect.ALLOW,
             actions=[
                 "cloudwatch:GetMetricStatistics",
                 "cloudwatch:ListMetrics"
             ],
-            resources=["*"],
-            conditions={
-                "StringEquals": {
-                    "cloudwatch:namespace": "AWS/MediaTailor"
-                }
-            }
+            resources=["*"]
         ))
         
         # cdk-nag suppressions

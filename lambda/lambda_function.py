@@ -304,7 +304,10 @@ def generate_pdf_report(report_data: Dict, start_time, end_time) -> bytes:
         topMargin=1*inch, 
         bottomMargin=0.75*inch,
         leftMargin=0.75*inch,
-        rightMargin=0.75*inch
+        rightMargin=0.75*inch,
+        title='MediaTailor Daily Report',
+        author='AWS MediaTailor Monitoring',
+        subject='Daily Ad-Fill Rate Metrics Report'
     )
     styles = getSampleStyleSheet()
     story = []

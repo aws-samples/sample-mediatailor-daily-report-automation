@@ -1,4 +1,4 @@
-FROM public.ecr.aws/lambda/python:3.9-arm64@sha256:22f6cc58f9c71236077768774af97aa2e1661fe530720350cbeecac4ba71dbe5
+FROM public.ecr.aws/lambda/python:3.13-arm64
 
 # Copy requirements and install dependencies
 COPY requirements.txt ${LAMBDA_TASK_ROOT}

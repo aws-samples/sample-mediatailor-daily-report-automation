@@ -59,15 +59,21 @@ def setup_logging(correlation_id=None):
     
     return logger
 
-cloudwatch = boto3.client('cloudwatch')
-ses = boto3.client('ses')
-
 def lambda_handler(event, context):
     """Main Lambda handler for MediaTailor daily report"""
     
     # Setup logging with correlation ID
     correlation_id = context.aws_request_id
     logger = setup_logging(correlation_id)
+    
+    # Initialize AWS clients with error handling
+    try:
+        global cloudwatch, ses
+        cloudwatch = boto3.client('cloudwatch')
+        ses = boto3.client('ses')
+    except Exception as e:
+        logger.error("Failed to initialize AWS clients", extra={"error": str(e)}, exc_info=True)
+        return {'statusCode': 500, 'body': 'AWS client initialization failed'}
     
     # Sanitize event source to prevent log injection
     event_source = 'unknown'
@@ -120,6 +126,10 @@ def lambda_handler(event, context):
         if test_mode:
             logger.info("Running in test mode")
     
+        # Calculate reporting period once
+        end_time = datetime.now(timezone.utc)
+        start_time = end_time - timedelta(days=1)
+    
         # Get metrics for all configurations
         report_data = {}
         mediatailor_configs = config.get('mediatailor_configs', [])
@@ -137,17 +147,17 @@ def lambda_handler(event, context):
                 continue
             
             logger.info("Processing configuration", extra={"config_name": safe_config_name})
-            metrics = get_mediatailor_metrics(safe_config_name, config.get('metrics', []), logger)
+            metrics = get_mediatailor_metrics(safe_config_name, config.get('metrics', []), logger, cloudwatch, start_time, end_time)
             report_data[safe_config_name] = metrics
         
         # Generate PDF and send email
         logger.info("Generating PDF report")
-        pdf_data = generate_pdf_report(report_data)
+        pdf_data = generate_pdf_report(report_data, start_time, end_time)
         
         logger.info("Sending email report", extra={
             "recipient_count": len(config.get('recipients', []))
         })
-        send_email_with_pdf(pdf_data, config.get('recipients', []), logger)
+        send_email_with_pdf(pdf_data, config.get('recipients', []), logger, ses)
         
         logger.info("Report generation completed successfully")
         return {
@@ -157,26 +167,23 @@ def lambda_handler(event, context):
         }
     
     except json.JSONDecodeError as e:
-        logger.error("Invalid configuration JSON", extra={"error": "Configuration parsing failed"})
+        logger.error("Invalid configuration JSON", extra={"error": str(e)}, exc_info=True)
         return {'statusCode': 500, 'body': 'Configuration error'}
     except KeyError as e:
-        logger.error("Missing configuration key", extra={"error": "Required configuration missing"})
+        logger.error("Missing configuration key", extra={"key": str(e)}, exc_info=True)
         return {'statusCode': 500, 'body': 'Configuration error'}
     except Exception as e:
-        logger.error("Report generation failed", extra={"error": "Internal processing error"})
+        logger.error("Report generation failed", extra={"error": str(e)}, exc_info=True)
         return {'statusCode': 500, 'body': 'Internal error'}
 
-def get_mediatailor_metrics(config_name: str, metrics: List[str], logger) -> Dict:
+def get_mediatailor_metrics(config_name: str, metrics: List[str], logger, cloudwatch_client, start_time, end_time) -> Dict:
     """Query CloudWatch metrics for a MediaTailor configuration"""
-    
-    end_time = datetime.now(timezone.utc)
-    start_time = end_time - timedelta(days=1)
     
     metric_data = {}
     
     for metric_name in metrics:
         try:
-            response = cloudwatch.get_metric_statistics(
+            response = cloudwatch_client.get_metric_statistics(
                 Namespace='AWS/MediaTailor',
                 MetricName=metric_name,
                 Dimensions=[
@@ -188,11 +195,20 @@ def get_mediatailor_metrics(config_name: str, metrics: List[str], logger) -> Dic
                 Statistics=['Average', 'Sum']
             )
             
+            if not isinstance(response, dict):
+                raise ValueError(f"Invalid CloudWatch response type: {type(response)}")
+            if 'Datapoints' not in response:
+                raise KeyError(f"Missing 'Datapoints' in CloudWatch response for metric {metric_name}")
+            
             if response['Datapoints']:
                 datapoint = response['Datapoints'][0]
+                # Don't round Sum for duration metrics to preserve precision for weighted calculations
+                avg_value = datapoint.get('Average', 0)
+                sum_value = datapoint.get('Sum', 0)
+                
                 metric_data[metric_name] = {
-                    'average': round(datapoint.get('Average', 0), 2),
-                    'sum': round(datapoint.get('Sum', 0), 2)
+                    'average': round(avg_value, 2),
+                    'sum': sum_value if metric_name in ['Avail.Duration', 'Avail.FilledDuration'] else round(sum_value, 2)
                 }
             else:
                 metric_data[metric_name] = {'average': 0, 'sum': 0}
@@ -201,8 +217,8 @@ def get_mediatailor_metrics(config_name: str, metrics: List[str], logger) -> Dic
             logger.error("Failed to get metric", extra={
                 "metric_name": metric_name,
                 "config_name": config_name,
-                "error": "CloudWatch API error"
-            })
+                "error": str(e)
+            }, exc_info=True)
             metric_data[metric_name] = {'error': 'Data unavailable'}
     
     # Calculate derived metrics
@@ -271,12 +287,12 @@ def calculate_derived_metrics(metric_data: Dict, logger, config_name: str) -> Di
     except Exception as e:
         logger.error("Failed to calculate derived metrics", extra={
             "config_name": config_name,
-            "error": "Calculation error"
-        })
+            "error": str(e)
+        }, exc_info=True)
     
     return derived_metrics
 
-def generate_pdf_report(report_data: Dict) -> bytes:
+def generate_pdf_report(report_data: Dict, start_time, end_time) -> bytes:
     """Generate PDF report"""
     
     from io import BytesIO
@@ -337,9 +353,6 @@ def generate_pdf_report(report_data: Dict) -> bytes:
         story.append(Spacer(1, 0.2*inch))
     
     # Single reporting period statement
-    end_time = datetime.now(timezone.utc)
-    start_time = end_time - timedelta(days=1)
-    
     period_style = ParagraphStyle(
         'Period',
         parent=styles['Normal'],
@@ -428,12 +441,11 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles) -> List
     }
     
     # Rename Avail.FillRate to Avail.FillRate (Avg) for display
-    display_metrics = {}
-    for metric, data in metrics.items():
-        if metric == 'Avail.FillRate':
-            display_metrics['Avail.FillRate (Avg)'] = data
-        else:
-            display_metrics[metric] = data
+    if 'Avail.FillRate' in metrics:
+        display_metrics = metrics.copy()
+        display_metrics['Avail.FillRate (Avg)'] = display_metrics.pop('Avail.FillRate')
+    else:
+        display_metrics = metrics
     
     # Define metric types
     RATE_METRICS = ['Avail.FillRate (Avg)', 'Avail.FillRate (Weighted)', 'AdDecisionServer.FillRate']
@@ -472,10 +484,12 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles) -> List
             sum_val = data.get('sum', 0)
             
             if metric in RATE_METRICS:
-                if metric in ['Avail.FillRate (Avg)', 'AdDecisionServer.FillRate']:
+                if metric == 'Avail.FillRate (Avg)':
+                    # Avail.FillRate is a decimal (0.99 = 99%)
                     display_value = avg * 100
                     value = f"{display_value:.1f}%"
                 else:
+                    # AdDecisionServer.FillRate and Weighted are already percentages
                     value = f"{avg:.1f}%"
             elif metric in LATENCY_METRICS:
                 value = f"{avg:.0f}ms"
@@ -500,8 +514,9 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles) -> List
             # Status determination
             status_text = "✓ Good"
             
-            if 'FillRate' in metric:
-                if metric in ['Avail.FillRate (Avg)', 'AdDecisionServer.FillRate']:
+            if metric == 'Avail.FillRate (Avg)' or metric == 'Avail.FillRate (Weighted)':
+                # Avail.FillRate metrics - these should be high (70-100%)
+                if metric == 'Avail.FillRate (Avg)':
                     rate_percent = avg * 100
                 else:
                     rate_percent = avg
@@ -512,6 +527,10 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles) -> List
                     status_text = "🔴 Critical"
                 elif rate_percent < 80:
                     status_text = "🟡 Low"
+            elif metric == 'AdDecisionServer.FillRate':
+                # AdDecisionServer.FillRate - informational only, no status thresholds
+                if avg == 0:
+                    status_text = "■ No Data"
             elif metric in DURATION_METRICS:
                 if sum_val == 0:
                     status_text = "■ No Data"
@@ -572,7 +591,16 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles) -> List
     return elements
 
 def generate_metrics_descriptions_table(styles) -> List:
-    """Generate metrics descriptions table for bottom of PDF"""
+    """Generate metrics descriptions table for bottom of PDF.
+    
+    Args:
+        styles: ReportLab StyleSheet object containing paragraph styles
+                for formatting the table content
+    
+    Returns:
+        List: List of ReportLab elements (Paragraph and Table) that make up
+              the metrics definitions section of the PDF report
+    """
     
     metric_descriptions = {
         'Avail.FillRate (Avg)': 'Simple average fill rate percentage for individual ad avails',
@@ -634,7 +662,7 @@ def generate_metrics_descriptions_table(styles) -> List:
     
     return elements
 
-def send_email_with_pdf(pdf_data: bytes, recipients: List[str], logger):
+def send_email_with_pdf(pdf_data: bytes, recipients: List[str], logger, ses_client):
     """Send email with PDF attachment via SES"""
     
     if not recipients:
@@ -643,7 +671,14 @@ def send_email_with_pdf(pdf_data: bytes, recipients: List[str], logger):
     
     # Load configuration
     config = json.loads(os.environ.get('REPORT_CONFIG', '{}'))
-    sender_email = config.get('sender_email', f"noreply@{recipients[0].split('@')[1]}")
+    
+    # Safer fallback for sender email
+    if 'sender_email' in config:
+        sender_email = config['sender_email']
+    elif recipients and '@' in recipients[0]:
+        sender_email = f"noreply@{recipients[0].split('@')[1]}"
+    else:
+        sender_email = "noreply@example.com"
     
     try:
         # Create multipart message
@@ -675,7 +710,7 @@ def send_email_with_pdf(pdf_data: bytes, recipients: List[str], logger):
         msg.attach(pdf_attachment)
         
         # Send via SES using configured sender
-        ses.send_raw_email(
+        ses_client.send_raw_email(
             Source=sender_email,
             Destinations=recipients,
             RawMessage={'Data': msg.as_string()}
@@ -687,9 +722,9 @@ def send_email_with_pdf(pdf_data: bytes, recipients: List[str], logger):
             "pdf_size_bytes": len(pdf_data)
         })
     except Exception as e:
-        logger.warning("Failed to send email, re-raising exception", extra={
+        logger.error("Failed to send email", extra={
             "recipient_count": len(recipients),
-            "error": "Email delivery failed"
-        })
-        raise RuntimeError("Email delivery failed")
+            "error": str(e)
+        }, exc_info=True)
+        raise
 

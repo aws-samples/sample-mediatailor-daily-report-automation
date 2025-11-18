@@ -23,7 +23,9 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         *)
-            shift
+            echo "Error: Unknown argument '$1'"
+            echo "Usage: $0 [up|down] [--region REGION]"
+            exit 1
             ;;
     esac
 done

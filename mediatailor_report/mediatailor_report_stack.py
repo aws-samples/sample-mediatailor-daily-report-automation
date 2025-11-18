@@ -52,7 +52,7 @@ class MediaTailorReportStack(Stack):
                 raise ValueError(f"Missing required configuration field: {field}")
         
         # Validate recipients list
-        if not isinstance(config['recipients'], list) or len(config['recipients']) == 0:
+        if not isinstance(config['recipients'], list) or not config['recipients']:
             raise ValueError("Recipients must be a non-empty list of email addresses")
         if len(config['recipients']) > 50:
             raise ValueError("Too many recipients (maximum 50 allowed)")
@@ -88,19 +88,22 @@ class MediaTailorReportStack(Stack):
         )
 
         # Lambda function using Docker image
-        lambda_function = _lambda.DockerImageFunction(self, "MediaTailorReportFunction",
-            code=_lambda.DockerImageCode.from_image_asset("lambda"),
-            timeout=Duration.minutes(5),
-            memory_size=512,
-            architecture=_lambda.Architecture.ARM_64,
-            environment={
-                "REPORT_CONFIG": json.dumps(config),
-                "LOG_LEVEL": "INFO"  # Change to DEBUG for development
-            },
-            log_group=logs.LogGroup(self, "MediaTailorReportFunctionLogGroup",
-                retention=logs.RetentionDays.ONE_MONTH
+        try:
+            lambda_function = _lambda.DockerImageFunction(self, "MediaTailorReportFunction",
+                code=_lambda.DockerImageCode.from_image_asset("lambda"),
+                timeout=Duration.minutes(5),
+                memory_size=512,
+                architecture=_lambda.Architecture.ARM_64,
+                environment={
+                    "REPORT_CONFIG": json.dumps(config),
+                    "LOG_LEVEL": "INFO"  # Change to DEBUG for development
+                },
+                log_group=logs.LogGroup(self, "MediaTailorReportFunctionLogGroup",
+                    retention=logs.RetentionDays.ONE_MONTH
+                )
             )
-        )
+        except Exception as e:
+            raise RuntimeError(f"Failed to create Lambda function: {str(e)}") from e
 
         # IAM permissions - CloudWatch GetMetricStatistics doesn't support resource-level permissions
         lambda_function.add_to_role_policy(iam.PolicyStatement(
@@ -140,15 +143,30 @@ class MediaTailorReportStack(Stack):
         ))
 
         # EventBridge rule for daily trigger
-        schedule_config = config.get('schedule', {'hour': '16', 'minute': '0'})
-        rule = events.Rule(self, "DailyTrigger",
-            schedule=events.Schedule.cron(
-                minute=schedule_config['minute'], 
-                hour=schedule_config['hour']
+        try:
+            schedule_config = config.get('schedule', {'hour': '16', 'minute': '0'})
+            
+            # Validate schedule configuration
+            if not isinstance(schedule_config, dict):
+                raise ValueError("Schedule configuration must be a dictionary")
+            if 'hour' not in schedule_config or 'minute' not in schedule_config:
+                raise ValueError("Schedule must contain 'hour' and 'minute' keys")
+            
+            hour = str(schedule_config['hour'])
+            minute = str(schedule_config['minute'])
+            
+            # Validate cron values
+            if not hour.isdigit() or not (0 <= int(hour) <= 23):
+                raise ValueError(f"Invalid hour value: {hour} (must be 0-23)")
+            if not minute.isdigit() or not (0 <= int(minute) <= 59):
+                raise ValueError(f"Invalid minute value: {minute} (must be 0-59)")
+            
+            rule = events.Rule(self, "DailyTrigger",
+                schedule=events.Schedule.cron(minute=minute, hour=hour)
             )
-        )
-
-        rule.add_target(targets.LambdaFunction(lambda_function))
+            rule.add_target(targets.LambdaFunction(lambda_function))
+        except Exception as e:
+            raise RuntimeError(f"Failed to create EventBridge rule: {str(e)}") from e
 
         # Outputs
         CfnOutput(self, "FunctionName",

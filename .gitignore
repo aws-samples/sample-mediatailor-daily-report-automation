@@ -44,11 +44,22 @@ Thumbs.db
 # Configuration (contains sensitive data)
 config/config.json
 
+# Amazon Q configuration
+.amazonq/
+
 # Logs
 *.log
 
 # Lambda test output
 output.json
+lambda_output.json
+lambda_test.json
+test_result.json
+pdf_test.json
+
+# Test reports
+METRICS_ACCURACY_REPORT.md
+TEST_SUMMARY.md
 
 # Generated documentation PDFs
 docs/pdf/

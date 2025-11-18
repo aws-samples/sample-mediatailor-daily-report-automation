@@ -5,12 +5,12 @@ This project uses the following third-party dependencies:
 ## CDK/Infrastructure Dependencies (requirements.txt)
 
 ### Apache License 2.0
-- aws-cdk-lib (>=2.100.0)
+- aws-cdk-lib (>=2.170.0)
 - aws-cdk.asset-awscli-v1
 - aws-cdk.asset-node-proxy-agent-v6
 - aws-cdk.cloud-assembly-schema
-- cdk-nag (>=2.27.0)
-- constructs (>=10.0.0)
+- cdk-nag (>=2.30.0)
+- constructs (>=10.4.0)
 - importlib_resources
 - jsii
 
@@ -30,17 +30,17 @@ This project uses the following third-party dependencies:
 ## Lambda Runtime Dependencies (lambda/requirements.txt)
 
 ### Apache License 2.0
-- boto3 (>=1.26.0)
-- aws-cdk-lib (>=2.100.0)
-- constructs (>=10.0.0)
+- boto3 (>=1.35.0)
+- aws-cdk-lib (>=2.170.0)
+- constructs (>=10.4.0)
 
 ### BSD License
-- reportlab (>=3.6.0)
+- reportlab (>=4.2.0)
 
 ## Docker Base Image
 
 ### Apache License 2.0
-- AWS Lambda Python Runtime (public.ecr.aws/lambda/python:3.9-arm64)
+- AWS Lambda Python Runtime (public.ecr.aws/lambda/python:3.13-arm64)
 
 ---
 

@@ -61,6 +61,6 @@ pdf_test.json
 METRICS_ACCURACY_REPORT.md
 TEST_SUMMARY.md
 
-# Generated documentation PDFs
-docs/pdf/
+# Generated PDFs (but allow samples/)
 *.pdf
+!samples/*.pdf

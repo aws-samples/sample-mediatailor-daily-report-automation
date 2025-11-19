@@ -15,6 +15,10 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
 
+# Initialize AWS clients at module level for Lambda container reuse
+cloudwatch = boto3.client('cloudwatch')
+ses = boto3.client('ses')
+
 class CorrelationFilter(logging.Filter):
     """Logging filter that adds correlation ID to all log records."""
     
@@ -65,15 +69,6 @@ def lambda_handler(event, context):
     # Setup logging with correlation ID
     correlation_id = context.aws_request_id
     logger = setup_logging(correlation_id)
-    
-    # Initialize AWS clients with error handling
-    try:
-        global cloudwatch, ses
-        cloudwatch = boto3.client('cloudwatch')
-        ses = boto3.client('ses')
-    except Exception as e:
-        logger.error("Failed to initialize AWS clients", extra={"error": str(e)}, exc_info=True)
-        return {'statusCode': 500, 'body': 'AWS client initialization failed'}
     
     # Sanitize event source to prevent log injection
     event_source = 'unknown'

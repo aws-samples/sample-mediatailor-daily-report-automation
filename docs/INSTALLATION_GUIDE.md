@@ -45,7 +45,7 @@ This software is provided as a proof-of-concept for evaluation and educational p
 
 ### Production Use
 
-For production-ready implementations with full support, consider engaging with AWS Professional Services or AWS Partners who can provide:
+If you need a production-ready solution, consider engaging with AWS Professional Services or AWS Partners who can provide:
 - Production-grade architecture and implementation
 - Ongoing support and maintenance
 - Security and compliance validation
@@ -104,7 +104,7 @@ MediaTailor Daily Report is an automated serverless solution that generates and 
 - **Learning**: Understand MediaTailor metrics and their business impact
 - **Reference**: Use as a starting point for custom reporting solutions
 
-**Note**: This is an evaluation tool. For production use, consider engaging with AWS Professional Services or AWS Partners for fully supported, production-ready solutions.
+**Note**: This is an evaluation tool only. It is not suitable for production use without significant additional development and testing.
 
 ---
 
@@ -343,7 +343,7 @@ Open `config/config.json` in your text editor:
 
 ### Important: Evaluation Deployment
 
-**Recommendation**: Deploy to a non-production AWS account for evaluation.
+**Recommendation**: Deploy only to non-production AWS accounts for evaluation.
 
 ### Step 1: Run Deployment Script
 
@@ -979,5 +979,5 @@ Example: (2000 seconds / 2500 seconds) × 100 = 80%
 **Application Version**: Compatible with CDK 2.100.0+  
 **AWS Services**: Lambda, SES, EventBridge, CloudWatch, MediaTailor  
 
-**Note**: For production-ready solutions, consider engaging with AWS Professional Services or AWS Partners for fully supported implementations.
+**Note**: This solution is for evaluation purposes only. For production deployments, engage with AWS Professional Services or AWS Partners.
 

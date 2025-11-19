@@ -79,7 +79,7 @@ Use this sample to understand the report structure before deploying.
 - Structured logging with correlation IDs
 - Comprehensive error handling
 - 30-day log retention for cost control
-- Production-ready deployment scripts
+- Deployment automation scripts
 - Input validation and sanitization
 - Least privilege IAM permissions
 - Container security (pinned base images, non-root user, health checks)

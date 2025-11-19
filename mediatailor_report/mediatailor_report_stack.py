@@ -126,7 +126,7 @@ class MediaTailorReportStack(Stack):
                 },
                 {
                     "id": "AwsSolutions-IAM5",
-                    "reason": "CloudWatch GetMetricStatistics/ListMetrics APIs require Resource:* per AWS API design. Scoped to AWS/MediaTailor namespace via condition to limit blast radius",
+                    "reason": "CloudWatch GetMetricStatistics/ListMetrics APIs require Resource:* per AWS API design. CloudWatch does not support resource-level or namespace-based IAM conditions for these actions.",
                     "appliesTo": ["Resource::*"]
                 }
             ],

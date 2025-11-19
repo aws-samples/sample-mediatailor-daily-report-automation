@@ -14,7 +14,7 @@ This document outlines the security measures and best practices implemented in t
 
 ### Container Security
 - Base image pinned to specific SHA256 hash for reproducible builds
-- Runs as non-root user (AWS Lambda default: `sbx_user1051`)
+- Runs as non-root user (UID 1000)
 - Health checks implemented for container monitoring
 - Optimized image size with `--no-cache-dir` flag
 
@@ -35,8 +35,7 @@ This document outlines the security measures and best practices implemented in t
 **CloudWatch Metrics Access**:
 - Actions: `cloudwatch:GetMetricStatistics`, `cloudwatch:ListMetrics`
 - Resource: `*` (required by CloudWatch API)
-- Condition: Scoped to `AWS/MediaTailor` namespace
-- Justification: CloudWatch APIs require wildcard resource, mitigated with namespace condition
+- Justification: CloudWatch APIs require wildcard resource and do not support resource-level or namespace-based IAM conditions
 
 **SES Email Sending**:
 - Actions: `ses:SendEmail`, `ses:SendRawEmail`
@@ -73,7 +72,7 @@ This document outlines the security measures and best practices implemented in t
 
 ### Base Image
 ```dockerfile
-FROM public.ecr.aws/lambda/python:3.9-arm64@sha256:22f6cc58f9c71236077768774af97aa2e1661fe530720350cbeecac4ba71dbe5
+FROM public.ecr.aws/lambda/python:3.13-arm64@sha256:40f8c6fafce540a133779e249d6206820c1d62e0442d0bdd9c8e1eb84c3b4eff
 ```
 
 **Benefits**:
@@ -86,15 +85,15 @@ FROM public.ecr.aws/lambda/python:3.9-arm64@sha256:22f6cc58f9c71236077768774af97
 ### Health Check
 ```dockerfile
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD python -c "import lambda_function" || exit 1
+  CMD ["python", "-c", "import lambda_function"]
 ```
 
 **Purpose**: Validates Lambda function code integrity
 
 ### Non-Root User
-- AWS Lambda base images run as `sbx_user1051` by default
-- No additional USER directive needed
+- Explicitly set to UID 1000 (non-root user)
 - Follows container security best practices
+- Prevents privilege escalation attacks
 
 ---
 
@@ -183,12 +182,12 @@ When AWS releases security updates:
 
 1. Pull latest image:
    ```bash
-   docker pull public.ecr.aws/lambda/python:3.9-arm64
+   docker pull public.ecr.aws/lambda/python:3.13-arm64
    ```
 
 2. Get new SHA256:
    ```bash
-   docker inspect public.ecr.aws/lambda/python:3.9-arm64 --format='{{index .RepoDigests 0}}'
+   docker inspect public.ecr.aws/lambda/python:3.13-arm64 --format='{{index .RepoDigests 0}}'
    ```
 
 3. Update `lambda/Dockerfile` with new hash

@@ -47,6 +47,12 @@ config/config.json
 # Amazon Q configuration
 .amazonq/
 
+# Kiro IDE configuration
+.kiro/
+
+# Kiro IDE configuration
+.kiro/
+
 # Logs
 *.log
 

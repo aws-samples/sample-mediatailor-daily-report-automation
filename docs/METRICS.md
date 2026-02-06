@@ -2,21 +2,14 @@
 
 ## Core Fill Rate Metrics
 
-### Avail.FillRate (Avg)
-- **Description**: Simple average fill rate percentage for individual ad avails
-- **Type**: Percentage
-- **Calculation**: Sum of individual break fill rates ÷ number of breaks
-- **Example**: 1000 breaks: 900×2sec (0% filled) + 100×20sec (100% filled) = 10% average
-- **Use Case**: Break-level performance analysis
-- **Limitation**: Skewed by many unfilled micro-breaks
-
-### Avail.FillRate (Weighted)
+### Avail.FillRate
 - **Description**: Duration-weighted fill rate (revenue-focused)
 - **Type**: Percentage (calculated)
 - **Calculation**: (Total FilledDuration ÷ Total Duration) × 100
-- **Example**: Same scenario = (2000sec filled ÷ 3800sec total) = 53%
+- **Example**: 2000sec filled ÷ 3800sec total = 52.6%
 - **Use Case**: Revenue performance and business reporting
 - **Advantage**: Reflects actual monetization effectiveness
+- **Note**: This is the weighted calculation, which is more accurate than simple averages for revenue analysis
 
 ## Core Duration Metrics
 
@@ -39,9 +32,11 @@
 ## Ad Decision Server (ADS) Metrics
 
 ### AdDecisionServer.FillRate
-- **Description**: Simple average of fill rate percentages returned by ADS
-- **Type**: Percentage
-- **Interpretation**: How often ADS successfully returns ads
+- **Description**: Duration-weighted fill rate for ADS responses
+- **Type**: Percentage (calculated)
+- **Calculation**: (AdDecisionServer.Duration ÷ Avail.Duration) × 100
+- **Interpretation**: How effectively ADS fills available ad inventory
+- **Note**: Uses weighted calculation for accuracy, not simple average
 
 ### AdDecisionServer.Ads
 - **Description**: Number of ads returned by ADS
@@ -67,6 +62,51 @@
 - **Description**: Number of timed-out requests to ADS
 - **Type**: Count
 - **Interpretation**: Requests that exceeded timeout threshold
+
+## Observed Duration Metrics (Actual vs Planned)
+
+These metrics capture what actually happened during playback, as opposed to what MediaTailor planned based on SCTE-35 markers. The difference between planned and observed metrics is critical for accurate revenue calculation and understanding viewer experience.
+
+### Avail.ObservedDuration
+- **Description**: Actual duration of ad avails that occurred during playback
+- **Type**: Duration (milliseconds)
+- **Source**: Measured from manifest segment timing and SCTE CUE-IN timing
+- **Example**: CUE-IN arrives at 25 seconds → 25,000ms observed (even if 30 seconds was planned)
+- **Use Case**: Actual viewer experience and revenue calculation
+- **Common Scenario**: Live content returns early (early CUE-IN), cutting break short
+
+### Avail.ObservedFilledDuration
+- **Description**: Actual duration of ads that were observed during playback
+- **Type**: Duration (milliseconds)
+- **Source**: Sum of ad creative durations that actually played
+- **Example**: If 25 seconds of a 30-second break played, this shows actual ad duration served
+- **Revenue Impact**: Direct correlation to actual billable ad time (not planned)
+- **Use Case**: Calculate true revenue earned vs planned revenue
+
+### Avail.ObservedFillRate
+- **Description**: Observed fill rate calculated from actual playback data
+- **Type**: Percentage (calculated)
+- **Calculation**: (Avail.ObservedFilledDuration ÷ Avail.ObservedDuration) × 100
+- **Advantage**: Works for both HLS and DASH (unlike CloudWatch's pre-calculated metric which is HLS-only)
+- **Use Case**: Validate actual performance vs planned performance
+- **Note**: This is calculated locally, not retrieved from CloudWatch
+
+**Key Distinction:**
+- **Planned metrics** (`Avail.Duration`, `Avail.FilledDuration`) = What MediaTailor expected based on SCTE-35 markers
+- **Observed metrics** (`Avail.ObservedDuration`, `Avail.ObservedFilledDuration`) = What actually happened during playback
+
+**Why this matters:**
+In live sports, early CUE-IN (game resumes before break ends) causes observed duration to be less than planned duration, resulting in revenue loss that planned metrics don't capture.
+
+## Manifest Performance Metrics
+
+### GetManifest.Latency
+- **Description**: Response time in milliseconds for manifest generation
+- **Type**: Duration (milliseconds)
+- **Source**: Time MediaTailor takes to generate and return manifests
+- **Use Case**: User experience monitoring and performance optimization
+- **Threshold**: Should be < 100ms for good user experience
+- **Business Impact**: High latency can cause buffering and poor viewer experience
 
 ## Session & Playback Metrics
 
@@ -135,16 +175,20 @@ If ObservedDuration ≈ Duration:
 → Optimal scenario - breaks running as planned
 ```
 
-### Fill Rate Comparison
+### Planned vs Observed Duration Analysis
 ```
-Large gap between Avg and Weighted (>20%):
-→ Many micro ad opportunities unfilled
-→ Longer breaks successfully monetized
-→ Normal MediaTailor behavior
+If ObservedDuration < Duration:
+→ Breaks ending early (SCTE CUE-IN, live content)
+→ Potential revenue loss from cut-off ads
+→ Common in live sports, breaking news
 
-Similar Avg and Weighted rates:
-→ Consistent break sizes
-→ Uniform fill performance across all breaks
+If ObservedDuration > Duration:
+→ Breaks running long (buffering, slow ad load)
+→ Poor viewer experience
+→ Technical delivery issues
+
+If ObservedDuration ≈ Duration:
+→ Optimal scenario - breaks running as planned
 ```
 
 ### Avail.ExpectedDuration
@@ -164,28 +208,36 @@ Similar Avg and Weighted rates:
 - **Type**: Count
 - **Interpretation**: Failures from content origin servers
 
+### Origin.Timeouts
+- **Description**: Number of timed-out requests to origin server
+- **Type**: Count
+- **Interpretation**: Requests to origin that exceeded timeout threshold
+- **Use Case**: Separate timeout issues from general errors for better troubleshooting
+- **Note**: Consistent with AdDecisionServer.Timeouts metric
+
 ## Status Indicators
 
 The report uses color-coded status indicators with specific thresholds:
 
 ### Fill Rate Metrics
-- **✓ Good**: ≥85% fill rate
-- **🟡 Low**: 70-84% fill rate
+- **✓ Good**: ≥80% fill rate
+- **🟡 Low**: 70-79% fill rate
 - **🔴 Critical**: <70% fill rate
 - **⚪ No Data**: 0% (no data available)
-- **⚠️ Check Data**: >20% discrepancy between average and weighted rates
 
-### Latency Metrics (AdDecisionServer.Latency)
+### Latency Metrics (AdDecisionServer.Latency, GetManifest.Latency)
 - **✓ Good**: ≤300ms response time
 - **🟡 Slow Response**: 301-500ms response time
 - **🔴 High Latency**: >500ms response time
 - **⚪ No Data**: 0ms (no data available)
+- **Note**: GetManifest.Latency should ideally be <100ms for optimal user experience
 
 ### Error Count Metrics
-- **✓ Good**: Minimal errors/timeouts
-- **🟡 Timeouts**: >50 timeout events
-- **🔴 High Errors**: >100 error events
+- **✓ Good**: <100 errors/timeouts
+- **🟡 Warning**: 100-999 errors/timeouts
+- **🔴 Critical**: ≥1,000 errors/timeouts
 - **⚪ No Data**: 0 events (no data available)
+- **Applies to**: AdDecisionServer.Errors, AdDecisionServer.Timeouts, GetManifest.Errors, Origin.Errors, Origin.Timeouts
 
 ### Duration Metrics
 - **✓ Good**: Normal duration ranges
@@ -200,15 +252,18 @@ The report uses color-coded status indicators with specific thresholds:
 ## Business Impact Analysis
 
 ### Revenue Calculations
-- **Planned Revenue**: Based on Avail.Duration
-- **Actual Revenue**: Based on Avail.ObservedDuration
-- **Monetized Time**: Avail.FilledDuration
-- **Efficiency**: FilledDuration ÷ ObservedDuration
+- **Planned Revenue**: Based on Avail.Duration (what was expected)
+- **Actual Revenue**: Based on Avail.ObservedDuration (what actually happened)
+- **Planned Monetized Time**: Avail.FilledDuration
+- **Actual Monetized Time**: Avail.ObservedFilledDuration
+- **Revenue Efficiency**: ObservedFilledDuration ÷ ObservedDuration
 
 ### Performance Indicators
-1. **Fill Rate Comparison**: Avg vs Weighted shows break distribution patterns
-2. **Duration Variance**: Duration vs ObservedDuration shows SCTE timing accuracy
-3. **Revenue Efficiency**: FilledDuration ÷ ObservedDuration shows actual monetization
-4. **Inventory Utilization**: FilledDuration ÷ Duration shows planned vs delivered
-5. **ADS Performance**: AdDecisionServer.Duration + Errors + Timeouts indicate ADS health
-6. **System Health**: GetManifest.Errors + Origin.Errors show infrastructure issues
+1. **Fill Rate Performance**: Avail.FillRate and AdDecisionServer.FillRate show monetization effectiveness
+2. **Planned vs Actual Variance**: Duration vs ObservedDuration shows SCTE timing accuracy and early CUE-IN frequency
+3. **Revenue Impact**: Compare planned vs observed metrics to quantify revenue loss from early breaks
+4. **Actual Revenue Efficiency**: ObservedFilledDuration ÷ ObservedDuration shows true monetization
+5. **Inventory Utilization**: FilledDuration ÷ Duration shows planned fill performance
+6. **ADS Performance**: AdDecisionServer.FillRate + Errors + Timeouts + Latency indicate ADS health
+7. **Manifest Performance**: GetManifest.Latency + Errors show user experience quality
+8. **Origin Health**: Origin.Errors + Timeouts show content delivery infrastructure issues

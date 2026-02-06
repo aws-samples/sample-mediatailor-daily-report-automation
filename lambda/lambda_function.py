@@ -223,18 +223,17 @@ def get_mediatailor_metrics(config_name: str, metrics: List[str], logger, cloudw
     return metric_data
 
 def calculate_derived_metrics(metric_data: Dict, logger, config_name: str) -> Dict:
-    """Calculate weighted fill rate and return derived metrics"""
+    """Calculate weighted fill rates and observed fill rate"""
     
     derived_metrics = {}
     
     try:
-        # Calculate Weighted Fill Rate (more accurate than simple average)
+        # Calculate Avail.FillRate (weighted - override simple average from CloudWatch)
         has_duration = 'Avail.Duration' in metric_data
         has_filled_duration = 'Avail.FilledDuration' in metric_data
         duration_sum = metric_data.get('Avail.Duration', {}).get('sum', 0)
         
         if has_duration and has_filled_duration and duration_sum > 0:
-            
             total_duration = metric_data['Avail.Duration']['sum']
             filled_duration = metric_data['Avail.FilledDuration']['sum']
             
@@ -245,38 +244,66 @@ def calculate_derived_metrics(metric_data: Dict, logger, config_name: str) -> Di
                     "total_duration": total_duration,
                     "filled_duration": filled_duration
                 })
-                return derived_metrics
-            
-            weighted_fill_rate = (filled_duration / total_duration) * 100
-            
-            derived_metrics['Avail.FillRate (Weighted)'] = {
-                'average': round(weighted_fill_rate, 1),
-                'sum': round(weighted_fill_rate, 1)
-            }
-            
-            logger.debug("Calculated weighted fill rate", extra={
-                "total_duration": total_duration,
-                "filled_duration": filled_duration,
-                "weighted_fill_rate": weighted_fill_rate
-            })
-            
-            # Add validation note if there's a significant discrepancy
-            if 'Avail.FillRate' in metric_data and metric_data['Avail.FillRate'].get('average') is not None:
-                avg_fill_rate_percent = metric_data['Avail.FillRate']['average'] * 100
-                discrepancy = abs(avg_fill_rate_percent - weighted_fill_rate)
+            else:
+                # Override Avail.FillRate with weighted calculation
+                weighted_avail_fill_rate = (filled_duration / total_duration) * 100
+                metric_data['Avail.FillRate'] = {
+                    'average': round(weighted_avail_fill_rate, 1),
+                    'sum': round(weighted_avail_fill_rate, 1)
+                }
                 
-                if discrepancy > 20:
-                    logger.warning("Large fill rate discrepancy detected", extra={
-                        "config_name": config_name,
-                        "avg_fill_rate_percent": avg_fill_rate_percent,
-                        "weighted_fill_rate": weighted_fill_rate,
-                        "discrepancy": discrepancy
-                    })
+                logger.debug("Calculated weighted Avail.FillRate", extra={
+                    "total_duration": total_duration,
+                    "filled_duration": filled_duration,
+                    "weighted_fill_rate": weighted_avail_fill_rate
+                })
+        
+        # Calculate AdDecisionServer.FillRate (weighted)
+        has_ads_duration = 'AdDecisionServer.Duration' in metric_data
+        if has_duration and has_ads_duration and duration_sum > 0:
+            total_duration = metric_data['Avail.Duration']['sum']
+            ads_duration = metric_data['AdDecisionServer.Duration']['sum']
+            
+            if total_duration > 0:
+                # Override AdDecisionServer.FillRate with weighted calculation
+                weighted_ads_fill_rate = (ads_duration / total_duration) * 100
+                metric_data['AdDecisionServer.FillRate'] = {
+                    'average': round(weighted_ads_fill_rate, 1),
+                    'sum': round(weighted_ads_fill_rate, 1)
+                }
+                
+                logger.debug("Calculated weighted AdDecisionServer.FillRate", extra={
+                    "total_duration": total_duration,
+                    "ads_duration": ads_duration,
+                    "weighted_fill_rate": weighted_ads_fill_rate
+                })
+        
+        # Calculate Avail.ObservedFillRate (works for both HLS and DASH)
+        has_observed_duration = 'Avail.ObservedDuration' in metric_data
+        has_observed_filled = 'Avail.ObservedFilledDuration' in metric_data
+        observed_duration_sum = metric_data.get('Avail.ObservedDuration', {}).get('sum', 0)
+        
+        if has_observed_duration and has_observed_filled and observed_duration_sum > 0:
+            observed_duration = metric_data['Avail.ObservedDuration']['sum']
+            observed_filled_duration = metric_data['Avail.ObservedFilledDuration']['sum']
+            
+            if observed_duration > 0:
+                observed_fill_rate = (observed_filled_duration / observed_duration) * 100
+                derived_metrics['Avail.ObservedFillRate'] = {
+                    'average': round(observed_fill_rate, 1),
+                    'sum': round(observed_fill_rate, 1)
+                }
+                
+                logger.debug("Calculated Avail.ObservedFillRate", extra={
+                    "observed_duration": observed_duration,
+                    "observed_filled_duration": observed_filled_duration,
+                    "observed_fill_rate": observed_fill_rate
+                })
         else:
-            logger.debug("Insufficient data for weighted fill rate calculation", extra={
-                "has_duration": 'Avail.Duration' in metric_data,
-                "has_filled_duration": 'Avail.FilledDuration' in metric_data,
-                "duration_sum": metric_data.get('Avail.Duration', {}).get('sum', 0)
+            logger.debug("Insufficient data for observed fill rate calculation", extra={
+                "has_observed_duration": has_observed_duration,
+                "has_observed_filled": has_observed_filled,
+                "observed_duration_sum": observed_duration_sum
             })
     
     except Exception as e:
@@ -425,31 +452,35 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles) -> List
     # Define metric groups by priority
     metric_groups = {
         'Critical Performance Metrics': [
-            'Avail.FillRate (Avg)', 'Avail.FillRate (Weighted)', 
-            'AdDecisionServer.FillRate', 'AdDecisionServer.Latency'
+            'Avail.FillRate', 
+            'AdDecisionServer.FillRate', 
+            'AdDecisionServer.Latency',
+            'GetManifest.Latency'
         ],
-        'Volume & Duration Metrics': [
-            'Avail.Duration', 'Avail.FilledDuration', 'Avail.Impression',
+        'Planned Duration Metrics': [
+            'Avail.Duration', 'Avail.FilledDuration'
+        ],
+        'Observed Duration Metrics': [
+            'Avail.ObservedDuration', 'Avail.ObservedFilledDuration', 'Avail.ObservedFillRate'
+        ],
+        'Volume Metrics': [
+            'Avail.Impression',
             'AdDecisionServer.Ads', 'AdDecisionServer.Duration'
         ],
         'Error & Health Metrics': [
             'AdDecisionServer.Errors', 'AdDecisionServer.Timeouts',
-            'GetManifest.Errors', 'Origin.Errors'
+            'GetManifest.Errors', 'Origin.Errors', 'Origin.Timeouts'
         ]
     }
     
-    # Rename Avail.FillRate to Avail.FillRate (Avg) for display
-    if 'Avail.FillRate' in metrics:
-        display_metrics = metrics.copy()
-        display_metrics['Avail.FillRate (Avg)'] = display_metrics.pop('Avail.FillRate')
-    else:
-        display_metrics = metrics
+    # Use metrics as-is (no renaming needed)
+    display_metrics = metrics
     
     # Define metric types
-    RATE_METRICS = ['Avail.FillRate (Avg)', 'Avail.FillRate (Weighted)', 'AdDecisionServer.FillRate']
-    DURATION_METRICS = ['Avail.Duration', 'Avail.FilledDuration', 'Avail.ObservedDuration', 'AdDecisionServer.Duration']
-    LATENCY_METRICS = ['AdDecisionServer.Latency']
-    COUNT_METRICS = ['AdDecisionServer.Ads', 'AdDecisionServer.Errors', 'AdDecisionServer.Timeouts', 'Avail.Impression', 'GetManifest.Errors', 'Origin.Errors']
+    RATE_METRICS = ['Avail.FillRate', 'AdDecisionServer.FillRate', 'Avail.ObservedFillRate']
+    DURATION_METRICS = ['Avail.Duration', 'Avail.FilledDuration', 'Avail.ObservedDuration', 'Avail.ObservedFilledDuration', 'AdDecisionServer.Duration']
+    LATENCY_METRICS = ['AdDecisionServer.Latency', 'GetManifest.Latency']
+    COUNT_METRICS = ['AdDecisionServer.Ads', 'AdDecisionServer.Errors', 'AdDecisionServer.Timeouts', 'Avail.Impression', 'GetManifest.Errors', 'Origin.Errors', 'Origin.Timeouts']
     
     # Generate tables for each metric group
     for group_name, metric_list in metric_groups.items():
@@ -482,13 +513,8 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles) -> List
             sum_val = data.get('sum', 0)
             
             if metric in RATE_METRICS:
-                if metric == 'Avail.FillRate (Avg)':
-                    # Avail.FillRate is a decimal (0.99 = 99%)
-                    display_value = avg * 100
-                    value = f"{display_value:.1f}%"
-                else:
-                    # AdDecisionServer.FillRate and Weighted are already percentages
-                    value = f"{avg:.1f}%"
+                # All fill rate metrics are now percentages (weighted calculations)
+                value = f"{avg:.1f}%"
             elif metric in LATENCY_METRICS:
                 value = f"{avg:.0f}ms"
             elif metric in DURATION_METRICS:
@@ -512,12 +538,9 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles) -> List
             # Status determination
             status_text = "✓ Good"
             
-            if metric == 'Avail.FillRate (Avg)' or metric == 'Avail.FillRate (Weighted)':
-                # Avail.FillRate metrics - these should be high (70-100%)
-                if metric == 'Avail.FillRate (Avg)':
-                    rate_percent = avg * 100
-                else:
-                    rate_percent = avg
+            if metric in ['Avail.FillRate', 'AdDecisionServer.FillRate', 'Avail.ObservedFillRate']:
+                # Fill rate metrics - these should be high (70-100%)
+                rate_percent = avg
                     
                 if rate_percent == 0:
                     status_text = "■ No Data"
@@ -525,10 +548,6 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles) -> List
                     status_text = "🔴 Critical"
                 elif rate_percent < 80:
                     status_text = "🟡 Low"
-            elif metric == 'AdDecisionServer.FillRate':
-                # AdDecisionServer.FillRate - informational only, no status thresholds
-                if avg == 0:
-                    status_text = "■ No Data"
             elif metric in DURATION_METRICS:
                 if sum_val == 0:
                     status_text = "■ No Data"
@@ -601,11 +620,13 @@ def generate_metrics_descriptions_table(styles) -> List:
     """
     
     metric_descriptions = {
-        'Avail.FillRate (Avg)': 'Simple average fill rate percentage for individual ad avails',
-        'Avail.FillRate (Weighted)': 'Weighted average fill rate: (FilledDuration/Duration) × 100',
+        'Avail.FillRate': 'Weighted fill rate: (FilledDuration/Duration) × 100',
         'Avail.Duration': 'Planned ad avail time from origin manifest',
         'Avail.FilledDuration': 'Actual duration of ad breaks that were filled with ads',
-        'AdDecisionServer.FillRate': 'Simple average of fill rate percentages returned by ADS',
+        'Avail.ObservedDuration': 'Actual duration of ad avails that occurred during playback',
+        'Avail.ObservedFilledDuration': 'Actual duration of ads that were observed during playback',
+        'Avail.ObservedFillRate': 'Observed fill rate: (ObservedFilledDuration/ObservedDuration) × 100',
+        'AdDecisionServer.FillRate': 'Weighted fill rate: (AdDecisionServer.Duration/Avail.Duration) × 100',
         'AdDecisionServer.Ads': 'Number of ads returned by ADS',
         'AdDecisionServer.Duration': 'Total duration of ads returned by ADS',
         'AdDecisionServer.Latency': 'Response time in milliseconds for requests MediaTailor makes to ADS',
@@ -613,7 +634,9 @@ def generate_metrics_descriptions_table(styles) -> List:
         'AdDecisionServer.Timeouts': 'Number of timed-out requests to ADS',
         'Avail.Impression': 'Number of ad impressions (increments when first segment requested)',
         'GetManifest.Errors': 'Number of errors while MediaTailor was generating manifests',
-        'Origin.Errors': 'Origin server connectivity problems'
+        'GetManifest.Latency': 'Response time in milliseconds for manifest generation',
+        'Origin.Errors': 'Origin server connectivity problems',
+        'Origin.Timeouts': 'Number of timed-out requests to origin server'
     }
     
     elements = []

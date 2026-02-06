@@ -50,9 +50,6 @@ config/config.json
 # Kiro IDE configuration
 .kiro/
 
-# Kiro IDE configuration
-.kiro/
-
 # Logs
 *.log
 

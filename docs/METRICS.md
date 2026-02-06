@@ -110,11 +110,6 @@ In live sports, early CUE-IN (game resumes before break ends) causes observed du
 
 ## Session & Playback Metrics
 
-### Session.Duration
-- **Description**: Total session time
-- **Type**: Duration (milliseconds)
-- **Interpretation**: Combined viewing time across all sessions
-
 ### Avail.Impression
 - **Description**: Number of ad impressions (increments when first segment requested)
 - **Type**: Count
@@ -159,22 +154,6 @@ Result: Poor viewer experience
 
 ## Duration Analysis
 
-### Key Relationships
-```
-If ObservedDuration < Duration:
-→ Breaks ending early (SCTE CUE-IN, live content)
-→ Potential revenue loss from cut-off ads
-→ Common in live sports, breaking news
-
-If ObservedDuration > Duration:
-→ Breaks running long (buffering, slow ad load)
-→ Poor viewer experience
-→ Technical delivery issues
-
-If ObservedDuration ≈ Duration:
-→ Optimal scenario - breaks running as planned
-```
-
 ### Planned vs Observed Duration Analysis
 ```
 If ObservedDuration < Duration:
@@ -190,11 +169,6 @@ If ObservedDuration > Duration:
 If ObservedDuration ≈ Duration:
 → Optimal scenario - breaks running as planned
 ```
-
-### Avail.ExpectedDuration
-- **Description**: Expected ad break duration
-- **Type**: Duration (milliseconds)
-- **Interpretation**: Planned ad break duration from configuration
 
 ## Error Monitoring Metrics
 

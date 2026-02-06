@@ -274,15 +274,16 @@ Open `config/config.json` in your text editor:
     "AdDecisionServer.FillRate",
     "AdDecisionServer.Ads",
     "AdDecisionServer.Duration",
+    "AdDecisionServer.Latency",
     "AdDecisionServer.Errors",
     "AdDecisionServer.Timeouts",
-    "AdDecisionServer.Latency",
-    "Session.Duration",
     "Avail.Impression",
     "Avail.ObservedDuration",
-    "Avail.ExpectedDuration",
+    "Avail.ObservedFilledDuration",
     "GetManifest.Errors",
-    "Origin.Errors"
+    "GetManifest.Latency",
+    "Origin.Errors",
+    "Origin.Timeouts"
   ],
   "recipients": ["recipient@yourdomain.com"],
   "sender_email": "mediatailor-reports@yourdomain.com",
@@ -484,10 +485,10 @@ The application queries the following CloudWatch metrics from the `AWS/MediaTail
 - **Unit**: Milliseconds
 - **Use**: Compare with planned duration for SCTE-35 timing analysis
 
-**Session.Duration**
-- **Description**: Total viewer session time
+**Avail.ObservedFilledDuration**
+- **Description**: Actual duration of ads that were observed during playback
 - **Unit**: Milliseconds
-- **Use**: Understand viewer engagement
+- **Use**: Calculate observed fill rate and actual revenue
 
 #### Ad Decision Server Metrics
 
@@ -526,17 +527,30 @@ The application queries the following CloudWatch metrics from the `AWS/MediaTail
 - **Unit**: Count
 - **Use**: Track ad delivery volume
 
-#### Error Metrics
+#### Manifest Performance Metrics
 
 **GetManifest.Errors**
 - **Description**: Errors during manifest generation
 - **Unit**: Count
 - **Use**: Monitor MediaTailor health
 
+**GetManifest.Latency**
+- **Description**: Manifest generation response time
+- **Unit**: Milliseconds
+- **Thresholds**: Good (<100ms), Slow (100-300ms), High (>300ms)
+- **Use**: Monitor user experience quality
+
+#### Error Metrics
+
 **Origin.Errors**
 - **Description**: Origin server connectivity issues
 - **Unit**: Count
 - **Use**: Identify content delivery problems
+
+**Origin.Timeouts**
+- **Description**: Timed out requests to origin server
+- **Unit**: Count
+- **Use**: Separate timeout issues from general errors
 
 ### Report Status Indicators
 

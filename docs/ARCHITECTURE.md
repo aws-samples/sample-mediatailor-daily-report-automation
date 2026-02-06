@@ -58,6 +58,9 @@ flowchart TD
   - `Avail.Duration` - Total planned ad time
   - `Avail.FilledDuration` - Total filled ad time
   - `AdDecisionServer.FillRate` - ADS fill rate
+  - `AdDecisionServer.Latency` - ADS response time
+  - `GetManifest.Latency` - Manifest generation response time
+  - `Origin.Timeouts` - Origin server timeout events
 
 ### 2. Amazon CloudWatch
 - **Purpose**: Metrics storage and aggregation

@@ -300,6 +300,11 @@ def calculate_derived_metrics(metric_data: Dict, logger, config_name: str) -> Di
                     "observed_fill_rate": observed_fill_rate
                 })
         else:
+            # Always include ObservedFillRate with zeros for consistent output
+            derived_metrics['Avail.ObservedFillRate'] = {
+                'average': 0,
+                'sum': 0
+            }
             logger.debug("Insufficient data for observed fill rate calculation", extra={
                 "has_observed_duration": has_observed_duration,
                 "has_observed_filled": has_observed_filled,
@@ -411,6 +416,31 @@ def generate_pdf_report(report_data: Dict, start_time, end_time) -> bytes:
     # Add metrics descriptions at the bottom
     story.extend(generate_metrics_descriptions_table(styles))
     
+    # Footnote about locally calculated metrics
+    footnote_style = ParagraphStyle(
+        'Footnote',
+        parent=styles['Normal'],
+        fontSize=7,
+        textColor=colors.HexColor('#6C757D'),
+        leftIndent=10,
+        rightIndent=10,
+        spaceBefore=10,
+        spaceAfter=5,
+        borderWidth=0.5,
+        borderColor=colors.HexColor('#E5E5E5'),
+        borderPadding=6,
+        backColor=colors.HexColor('#F8F9FA')
+    )
+    footnote_text = (
+        "Note: Avail.ObservedFillRate is calculated locally as (ObservedFilledDuration ÷ ObservedDuration) × 100. "
+        "AWS CloudWatch only emits this metric natively for HLS manifests (at CUE-IN). This report derives it from "
+        "the underlying CloudWatch metrics to provide coverage for both HLS and DASH streams. For HLS, values may "
+        "differ slightly from CloudWatch due to weighted (sum-based) vs simple (per-avail) averaging. "
+        "Ref: https://docs.aws.amazon.com/mediatailor/latest/ug/monitoring-cloudwatch-metrics.html"
+    )
+    story.append(Spacer(1, 0.2*inch))
+    story.append(Paragraph(footnote_text, footnote_style))
+
     # Footer
     footer_style = ParagraphStyle(
         'Footer',
@@ -535,36 +565,59 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles) -> List
             else:
                 value = str(avg)
             
-            # Status determination
-            status_text = "✓ Good"
+            # Status determination with simplified categories
+            status_text = "✓ Healthy"
             
             if metric in ['Avail.FillRate', 'AdDecisionServer.FillRate', 'Avail.ObservedFillRate']:
                 # Fill rate metrics - these should be high (70-100%)
                 rate_percent = avg
                     
                 if rate_percent == 0:
-                    status_text = "■ No Data"
+                    status_text = "⚪ No Data"
                 elif rate_percent < 70:
                     status_text = "🔴 Critical"
                 elif rate_percent < 80:
-                    status_text = "🟡 Low"
-            elif metric in DURATION_METRICS:
+                    status_text = "🟡 Warning"
+                # else: ✓ Healthy (default)
+            elif metric in DURATION_METRICS or metric == 'Avail.Impression':
+                # Duration and volume metrics are informational only
                 if sum_val == 0:
-                    status_text = "■ No Data"
+                    status_text = "⚪ No Data"
+                else:
+                    status_text = "ℹ️ Info"
             elif metric in LATENCY_METRICS:
                 if avg == 0:
-                    status_text = "■ No Data"
-                elif avg > 500:
-                    status_text = "🔴 High Latency"
-                elif avg > 300:
-                    status_text = "🟡 Slow Response"
-            elif metric in COUNT_METRICS:
+                    status_text = "⚪ No Data"
+                elif metric == 'AdDecisionServer.Latency':
+                    # ADS timeout is 3s; AWS recommends <1000ms
+                    if avg > 2000:
+                        status_text = "🔴 Critical"
+                    elif avg > 1000:
+                        status_text = "🟡 Warning"
+                    # else: ✓ Healthy (default)
+                elif metric == 'GetManifest.Latency':
+                    # AWS recommends <200ms for manifest generation
+                    if avg > 500:
+                        status_text = "🔴 Critical"
+                    elif avg > 200:
+                        status_text = "🟡 Warning"
+                    # else: ✓ Healthy (default)
+            elif metric in ['AdDecisionServer.Errors', 'AdDecisionServer.Timeouts', 
+                           'GetManifest.Errors', 'Origin.Errors', 'Origin.Timeouts']:
+                # All error metrics use absolute thresholds
                 if sum_val == 0:
-                    status_text = "■ No Data"
-                elif 'Errors' in metric and sum_val > 100:
-                    status_text = "🔴 High Errors"
-                elif 'Timeouts' in metric and sum_val > 50:
-                    status_text = "🟡 Timeouts"
+                    status_text = "⚪ No Data"
+                elif sum_val >= 1000:
+                    status_text = "🔴 Critical"
+                elif sum_val >= 100:
+                    status_text = "🟡 Warning"
+                # else: ✓ Healthy (default)
+            elif metric == 'AdDecisionServer.Ads':
+                # Volume metric is informational only
+                if sum_val == 0:
+                    status_text = "⚪ No Data"
+                else:
+                    status_text = "ℹ️ Info"
             
             table_data.append([metric, value, status_text])
         
@@ -589,12 +642,14 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles) -> List
                 ('ALIGN', (2, 1), (2, -1), 'CENTER'),
             ]
             
-            # Add status colors
+            # Add status colors for simplified categories
             for i, row in enumerate(table_data[1:], 1):
                 status = row[2]
-                if "Good" in status:
+                if "Healthy" in status:
                     table_style.append(('TEXTCOLOR', (2, i), (2, i), colors.HexColor('#28A745')))
-                elif "Low" in status:
+                elif "Info" in status:
+                    table_style.append(('TEXTCOLOR', (2, i), (2, i), colors.HexColor('#17A2B8')))
+                elif "Warning" in status:
                     table_style.append(('TEXTCOLOR', (2, i), (2, i), colors.HexColor('#FFC107')))
                 elif "Critical" in status:
                     table_style.append(('TEXTCOLOR', (2, i), (2, i), colors.HexColor('#DC3545')))
@@ -625,7 +680,11 @@ def generate_metrics_descriptions_table(styles) -> List:
         'Avail.FilledDuration': 'Actual duration of ad breaks that were filled with ads',
         'Avail.ObservedDuration': 'Actual duration of ad avails that occurred during playback',
         'Avail.ObservedFilledDuration': 'Actual duration of ads that were observed during playback',
-        'Avail.ObservedFillRate': 'Observed fill rate: (ObservedFilledDuration/ObservedDuration) × 100',
+        'Avail.ObservedFillRate': 'Locally calculated: (ObservedFilledDuration/ObservedDuration) × 100. '
+                                    'Note: AWS CloudWatch emits this metric only for HLS (at CUE-IN). '
+                                    'This report calculates it from ObservedDuration and ObservedFilledDuration '
+                                    'to support both HLS and DASH. Values may differ slightly from CloudWatch '
+                                    'for HLS due to weighted vs simple averaging.',
         'AdDecisionServer.FillRate': 'Weighted fill rate: (AdDecisionServer.Duration/Avail.Duration) × 100',
         'AdDecisionServer.Ads': 'Number of ads returned by ADS',
         'AdDecisionServer.Duration': 'Total duration of ads returned by ADS',

@@ -85,11 +85,21 @@ These metrics capture what actually happened during playback, as opposed to what
 
 ### Avail.ObservedFillRate
 - **Description**: Observed fill rate calculated from actual playback data
-- **Type**: Percentage (calculated)
+- **Type**: Percentage (calculated locally — not fetched from CloudWatch)
 - **Calculation**: (Avail.ObservedFilledDuration ÷ Avail.ObservedDuration) × 100
 - **Advantage**: Works for both HLS and DASH (unlike CloudWatch's pre-calculated metric which is HLS-only)
 - **Use Case**: Validate actual performance vs planned performance
 - **Note**: This is calculated locally, not retrieved from CloudWatch
+
+> **Important — Locally Calculated Metric**
+>
+> AWS CloudWatch emits `Avail.ObservedFillRate` natively only for HLS manifests, at the first `CUE-IN` tag. If there is no `CUE-IN` tag, CloudWatch does not emit this metric. It is not emitted for DASH streams at all.
+>
+> This report calculates `Avail.ObservedFillRate` locally using the sum of `Avail.ObservedFilledDuration` divided by the sum of `Avail.ObservedDuration`. This provides coverage for both HLS and DASH streams.
+>
+> For HLS streams, the locally calculated value may differ slightly from the CloudWatch-native metric because CloudWatch uses a simple average of per-avail fill rates, while this report uses a weighted (sum-based) average. The weighted approach is more accurate for revenue analysis but will produce a different number than the CloudWatch console.
+>
+> Reference: [AWS MediaTailor CloudWatch Metrics](https://docs.aws.amazon.com/mediatailor/latest/ug/monitoring-cloudwatch-metrics.html)
 
 **Key Distinction:**
 - **Planned metrics** (`Avail.Duration`, `Avail.FilledDuration`) = What MediaTailor expected based on SCTE-35 markers
@@ -191,37 +201,56 @@ If ObservedDuration ≈ Duration:
 
 ## Status Indicators
 
-The report uses color-coded status indicators with specific thresholds:
+The report uses simplified, consistent status categories across all metrics:
 
-### Fill Rate Metrics
-- **✓ Good**: ≥80% fill rate
-- **🟡 Low**: 70-79% fill rate
+### Status Level Definitions
+| Status | Meaning |
+|--------|---------|
+| **✓ Healthy** | Metrics within expected ranges |
+| **ℹ️ Info** | Informational only (no threshold applies) |
+| **🟡 Warning** | Approaching concerning levels |
+| **🔴 Critical** | Requires immediate attention |
+| **⚪ No Data** | Insufficient data to determine status |
+
+### Fill Rate Metrics (Avail.FillRate, AdDecisionServer.FillRate, Avail.ObservedFillRate)
+- **✓ Healthy**: ≥80% fill rate
+- **🟡 Warning**: 70-79% fill rate
 - **🔴 Critical**: <70% fill rate
 - **⚪ No Data**: 0% (no data available)
 
-### Latency Metrics (AdDecisionServer.Latency, GetManifest.Latency)
-- **✓ Good**: ≤300ms response time
-- **🟡 Slow Response**: 301-500ms response time
-- **🔴 High Latency**: >500ms response time
-- **⚪ No Data**: 0ms (no data available)
-- **Note**: GetManifest.Latency should ideally be <100ms for optimal user experience
+### Latency Metrics
 
-### Error Count Metrics
-- **✓ Good**: <100 errors/timeouts
+#### AdDecisionServer.Latency
+AWS MediaTailor has a 3-second ADS timeout ([source](https://docs.aws.amazon.com/mediatailor/latest/ug/quotas.html)) and recommends ADS latency under 1000ms ([source](https://docs.aws.amazon.com/mediatailor/latest/ug/cdn-monitoring.html)).
+- **✓ Healthy**: ≤1000ms response time
+- **🟡 Warning**: 1001-2000ms response time
+- **🔴 Critical**: >2000ms response time (approaching 3s timeout)
+- **⚪ No Data**: 0ms (no data available)
+
+#### GetManifest.Latency
+AWS recommends manifest generation under 200ms ([source](https://docs.aws.amazon.com/mediatailor/latest/ug/cdn-monitoring.html)).
+- **✓ Healthy**: ≤200ms response time
+- **🟡 Warning**: 201-500ms response time
+- **🔴 Critical**: >500ms response time
+- **⚪ No Data**: 0ms (no data available)
+
+### Error Count Metrics (Absolute Thresholds)
+- **✓ Healthy**: <100 errors/timeouts
 - **🟡 Warning**: 100-999 errors/timeouts
 - **🔴 Critical**: ≥1,000 errors/timeouts
 - **⚪ No Data**: 0 events (no data available)
 - **Applies to**: AdDecisionServer.Errors, AdDecisionServer.Timeouts, GetManifest.Errors, Origin.Errors, Origin.Timeouts
+- **Note**: Absolute thresholds are used because MediaTailor does not expose the necessary denominator metrics to calculate accurate error rates. AdDecisionServer.Ads counts ads returned (not requests), so it cannot be used as a denominator.
 
-### Duration Metrics
-- **✓ Good**: Normal duration ranges
-- **🟡 High Volume**: >2 hours total duration (high traffic)
+### Duration Metrics (Informational)
+- **ℹ️ Info**: All non-zero values (informational only, no thresholds)
 - **⚪ No Data**: 0 duration (no data available)
+- **Applies to**: Avail.Duration, Avail.FilledDuration, Avail.ObservedDuration, Avail.ObservedFilledDuration, AdDecisionServer.Duration
 
-### Count Metrics (Ads, Impressions)
-- **✓ Good**: Positive counts with normal activity
+### Volume Metrics (Informational)
+- **ℹ️ Info**: All non-zero values (informational only, no thresholds)
 - **⚪ No Data**: 0 count (no data available)
-- **⚠️ Check ADS**: Impressions without corresponding ADS ads
+- **Applies to**: Avail.Impression, AdDecisionServer.Ads
 
 ## Business Impact Analysis
 

@@ -1,5 +1,6 @@
 # CDK build artifacts - DO NOT SHARE WITH CUSTOMERS
 cdk.out/
+cdk.context.json
 *.swp
 *.swo
 

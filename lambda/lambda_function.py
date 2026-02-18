@@ -149,16 +149,24 @@ def lambda_handler(event, context):
         logger.info("Generating PDF report")
         pdf_data = generate_pdf_report(report_data, start_time, end_time)
         
+        recipients = config.get('recipients', [])
+        sender_email = resolve_sender_email(config, recipients)
+
         logger.info("Sending email report", extra={
-            "recipient_count": len(config.get('recipients', []))
+            "recipient_count": len(recipients)
         })
-        send_email_with_pdf(pdf_data, config.get('recipients', []), logger, ses)
+        logger.debug("Report metrics generated", extra={
+            "configurations_processed": len(report_data),
+            "report_data": report_data
+        })
+        send_email_with_pdf(pdf_data, recipients, sender_email, logger, ses)
         
         logger.info("Report generation completed successfully")
         return {
-            'statusCode': 200, 
+            'statusCode': 200,
             'body': 'Report sent successfully',
-            'reportData': report_data
+            'configsProcessed': len(report_data),
+            'recipientCount': len(recipients)
         }
     
     except json.JSONDecodeError as e:
@@ -660,23 +668,24 @@ def generate_metrics_descriptions_table(styles) -> List:
     
     return elements
 
-def send_email_with_pdf(pdf_data: bytes, recipients: List[str], logger, ses_client):
+def resolve_sender_email(config: Dict, recipients: List[str]) -> str:
+    """Resolve sender email from config with safe fallbacks."""
+
+    sender_email = config.get('sender_email')
+    if isinstance(sender_email, str) and sender_email and '@' in sender_email:
+        return sender_email
+
+    if recipients and isinstance(recipients[0], str) and '@' in recipients[0]:
+        return f"noreply@{recipients[0].split('@')[1]}"
+
+    return "noreply@example.com"
+
+def send_email_with_pdf(pdf_data: bytes, recipients: List[str], sender_email: str, logger, ses_client):
     """Send email with PDF attachment via SES"""
     
     if not recipients:
         logger.warning("No recipients configured for email")
         return
-    
-    # Load configuration
-    config = json.loads(os.environ.get('REPORT_CONFIG', '{}'))
-    
-    # Safer fallback for sender email
-    if 'sender_email' in config:
-        sender_email = config['sender_email']
-    elif recipients and '@' in recipients[0]:
-        sender_email = f"noreply@{recipients[0].split('@')[1]}"
-    else:
-        sender_email = "noreply@example.com"
     
     try:
         # Create multipart message
@@ -722,4 +731,3 @@ def send_email_with_pdf(pdf_data: bytes, recipients: List[str], logger, ses_clie
     except Exception as e:
         logger.warning("Email sending failed, propagating error", extra={"recipient_count": len(recipients), "error": str(e)})
         raise Exception(f"Failed to send email to {len(recipients)} recipient(s): {str(e)}") from e
-

@@ -15,8 +15,11 @@
     "AdDecisionServer.Timeouts",
     "Avail.Impression",
     "Avail.ObservedDuration",
+    "Avail.ObservedFilledDuration",
     "GetManifest.Errors",
-    "Origin.Errors"
+    "GetManifest.Latency",
+    "Origin.Errors",
+    "Origin.Timeouts"
   ],
   "recipients": [
     "recipient1@yourdomain.com",

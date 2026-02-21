@@ -26,6 +26,12 @@ This document outlines the security measures and best practices implemented in t
 - Sanitized error messages prevent information disclosure
 - Log injection prevention
 
+### API Resilience
+- Boto3 adaptive retry mode for CloudWatch and SES API calls
+- Automatic handling of throttling and transient errors
+- Maximum 3 retry attempts with exponential backoff
+- Configured at module level for Lambda container reuse
+
 ---
 
 ## IAM Permissions
@@ -292,5 +298,5 @@ Before deploying to production:
 
 ---
 
-**Last Updated**: January 2025  
+**Last Updated**: February 2025  
 **Review Frequency**: Quarterly or after significant changes

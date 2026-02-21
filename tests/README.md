@@ -21,5 +21,6 @@ bash test_accuracy.sh
 - Weighted fill rate calculation: `(FilledDuration / Duration) × 100`
 - Data integrity and precision
 - Business metrics validation
+- New metrics: Observed duration metrics, GetManifest.Latency, Origin.Timeouts
 
 The test compares Lambda output against direct CloudWatch API queries to ensure accuracy.

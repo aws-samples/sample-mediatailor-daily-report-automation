@@ -69,6 +69,7 @@ A sample PDF report is available at [samples/mediatailor-report-year-month-date.
 - Fill rate percentages with status indicators
 - Duration metrics (hours/minutes/seconds)
 - Error counts and latency measurements
+- Simplified status categories (✓ Healthy, ℹ️ Info, 🟡 Warning, 🔴 Critical, ⚪ No Data)
 - Professional formatting with AWS branding
 
 Use this sample to understand the report structure before deploying.

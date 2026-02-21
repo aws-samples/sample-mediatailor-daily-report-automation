@@ -691,11 +691,7 @@ def generate_metrics_descriptions_table(styles) -> List:
         'Avail.FilledDuration': 'Actual duration of ad breaks that were filled with ads',
         'Avail.ObservedDuration': 'Actual duration of ad avails that occurred during playback',
         'Avail.ObservedFilledDuration': 'Actual duration of ads that were observed during playback',
-        'Avail.ObservedFillRate': 'Locally calculated: (ObservedFilledDuration/ObservedDuration) × 100. '
-                                    'Note: AWS CloudWatch emits this metric only for HLS (at CUE-IN). '
-                                    'This report calculates it from ObservedDuration and ObservedFilledDuration '
-                                    'to support both HLS and DASH. Values may differ slightly from CloudWatch '
-                                    'for HLS due to weighted vs simple averaging.',
+        'Avail.ObservedFillRate': 'Locally calculated: (ObservedFilledDuration/ObservedDuration) × 100 (see footnote)',
         'AdDecisionServer.FillRate': 'Weighted fill rate: (AdDecisionServer.Duration/Avail.Duration) × 100',
         'AdDecisionServer.Ads': 'Number of ads returned by ADS',
         'AdDecisionServer.Duration': 'Total duration of ads returned by ADS',

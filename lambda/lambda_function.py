@@ -14,10 +14,13 @@ import base64
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
+from botocore.config import Config
 
 # Initialize AWS clients at module level for Lambda container reuse
-cloudwatch = boto3.client('cloudwatch')
-ses = boto3.client('ses')
+# Adaptive retry mode handles throttling and transient errors automatically
+boto_config = Config(retries={'max_attempts': 3, 'mode': 'adaptive'})
+cloudwatch = boto3.client('cloudwatch', config=boto_config)
+ses = boto3.client('ses', config=boto_config)
 
 class CorrelationFilter(logging.Filter):
     """Logging filter that adds correlation ID to all log records."""
@@ -152,14 +155,22 @@ def lambda_handler(event, context):
         logger.info("Sending email report", extra={
             "recipient_count": len(config.get('recipients', []))
         })
-        send_email_with_pdf(pdf_data, config.get('recipients', []), logger, ses)
+        send_email_with_pdf(pdf_data, config.get('recipients', []), logger, ses, sender_email=config.get('sender_email'))
         
         logger.info("Report generation completed successfully")
-        return {
+        
+        response = {
             'statusCode': 200, 
             'body': 'Report sent successfully',
-            'reportData': report_data
+            'configCount': len(report_data),
+            'recipientCount': len(config.get('recipients', []))
         }
+        
+        # Include report data only in test mode for validation
+        if test_mode:
+            response['reportData'] = report_data
+        
+        return response
     
     except json.JSONDecodeError as e:
         logger.error("Invalid configuration JSON", extra={"error": str(e)}, exc_info=True)
@@ -742,23 +753,19 @@ def generate_metrics_descriptions_table(styles) -> List:
     
     return elements
 
-def send_email_with_pdf(pdf_data: bytes, recipients: List[str], logger, ses_client):
+def send_email_with_pdf(pdf_data: bytes, recipients: List[str], logger, ses_client, sender_email: str = None):
     """Send email with PDF attachment via SES"""
     
     if not recipients:
         logger.warning("No recipients configured for email")
         return
     
-    # Load configuration
-    config = json.loads(os.environ.get('REPORT_CONFIG', '{}'))
-    
-    # Safer fallback for sender email
-    if 'sender_email' in config:
-        sender_email = config['sender_email']
-    elif recipients and '@' in recipients[0]:
-        sender_email = f"noreply@{recipients[0].split('@')[1]}"
-    else:
-        sender_email = "noreply@example.com"
+    # Use provided sender_email or fall back to deriving from recipients
+    if not sender_email:
+        if recipients and '@' in recipients[0]:
+            sender_email = f"noreply@{recipients[0].split('@')[1]}"
+        else:
+            sender_email = "noreply@example.com"
     
     try:
         # Create multipart message

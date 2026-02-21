@@ -158,7 +158,7 @@ case $ACTION in
 
         # Deploy stack
         echo "Deploying stack..."
-        cdk deploy --context region="$REGION" --require-approval never
+        cdk deploy --context region="$REGION" --require-approval broadening
         if [ $? -ne 0 ]; then
             echo "Error: CDK deployment failed"
             exit 1

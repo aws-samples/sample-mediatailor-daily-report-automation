@@ -45,6 +45,10 @@ Thumbs.db
 # Configuration (contains sensitive data)
 config/config.json
 
+# Claude Code memory and configuration (contains project-specific context)
+.claude/
+CLAUDE.md
+
 # Amazon Q configuration
 .amazonq/
 

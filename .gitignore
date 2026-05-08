@@ -72,3 +72,13 @@ TEST_SUMMARY.md
 # Generated PDFs (but allow samples/)
 *.pdf
 !samples/*.pdf
+# Test outputs and temporary files
+response.json
+test-payload.json
+
+# Temporary virtual environments
+.venv/
+
+# Deployment guides (keep in local, not in repo)
+DEPLOY_CHECKLIST.md
+TEST_DEPLOYMENT_GUIDE.md

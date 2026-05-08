@@ -1,0 +1,25 @@
+{
+  "name": "Direct Campaigns Test (No Fill Rates)",
+  "description": "Simulates Astro's workflow - should NOT show fill rates",
+  "mediatailor_configs": ["test-config"],
+  "metrics": [
+    "AdDecisionServer.Ads",
+    "AdDecisionServer.Latency",
+    "AdDecisionServer.Errors",
+    "AdDecisionServer.Timeouts",
+    "Avail.Duration",
+    "Avail.FilledDuration",
+    "Avail.Impression"
+  ],
+  "recipients": ["test@example.com"],
+  "sender_email": "test@example.com",
+  "schedule": {
+    "hour": "9",
+    "minute": "0"
+  },
+  "expected_behavior": {
+    "should_calculate_avail_fill_rate": false,
+    "should_calculate_ads_fill_rate": false,
+    "should_show_duration_metrics": true
+  }
+}

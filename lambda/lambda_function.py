@@ -227,40 +227,24 @@ def get_mediatailor_metrics(config_name: str, metrics: List[str], logger, cloudw
             }, exc_info=True)
             metric_data[metric_name] = {'error': 'Data unavailable'}
     
-    # Calculate derived metrics (only if explicitly requested in config)
-    derived_metrics = calculate_derived_metrics(metric_data, metrics, logger, config_name)
+    # Calculate derived metrics
+    derived_metrics = calculate_derived_metrics(metric_data, logger, config_name)
     metric_data.update(derived_metrics)
     
     return metric_data
 
-def calculate_derived_metrics(metric_data: Dict, requested_metrics: List[str], logger, config_name: str) -> Dict:
-    """Calculate weighted fill rates and observed fill rate.
-
-    Only calculates derived metrics if they are explicitly requested in the config.
-    This prevents auto-calculation of fill rates for workflows where they're not relevant
-    (e.g., direct campaigns without programmatic backfill).
-
-    Args:
-        metric_data: Dictionary of fetched CloudWatch metrics
-        requested_metrics: List of metrics explicitly requested in config.json
-        logger: Logger instance
-        config_name: MediaTailor configuration name
-
-    Returns:
-        Dictionary of calculated derived metrics (only those requested)
-    """
-
+def calculate_derived_metrics(metric_data: Dict, logger, config_name: str) -> Dict:
+    """Calculate weighted fill rates and observed fill rate"""
+    
     derived_metrics = {}
-
+    
     try:
         # Calculate Avail.FillRate (weighted - override simple average from CloudWatch)
-        # Only calculate if explicitly requested in config
         has_duration = 'Avail.Duration' in metric_data
         has_filled_duration = 'Avail.FilledDuration' in metric_data
         duration_sum = metric_data.get('Avail.Duration', {}).get('sum', 0)
-        fill_rate_requested = 'Avail.FillRate' in requested_metrics
-
-        if fill_rate_requested and has_duration and has_filled_duration and duration_sum > 0:
+        
+        if has_duration and has_filled_duration and duration_sum > 0:
             total_duration = metric_data['Avail.Duration']['sum']
             filled_duration = metric_data['Avail.FilledDuration']['sum']
             
@@ -274,11 +258,11 @@ def calculate_derived_metrics(metric_data: Dict, requested_metrics: List[str], l
             else:
                 # Override Avail.FillRate with weighted calculation
                 weighted_avail_fill_rate = (filled_duration / total_duration) * 100
-                derived_metrics['Avail.FillRate'] = {
+                metric_data['Avail.FillRate'] = {
                     'average': round(weighted_avail_fill_rate, 1),
                     'sum': round(weighted_avail_fill_rate, 1)
                 }
-
+                
                 logger.debug("Calculated weighted Avail.FillRate", extra={
                     "total_duration": total_duration,
                     "filled_duration": filled_duration,
@@ -286,22 +270,19 @@ def calculate_derived_metrics(metric_data: Dict, requested_metrics: List[str], l
                 })
         
         # Calculate AdDecisionServer.FillRate (weighted)
-        # Only calculate if explicitly requested in config
         has_ads_duration = 'AdDecisionServer.Duration' in metric_data
-        ads_fill_rate_requested = 'AdDecisionServer.FillRate' in requested_metrics
-
-        if ads_fill_rate_requested and has_duration and has_ads_duration and duration_sum > 0:
+        if has_duration and has_ads_duration and duration_sum > 0:
             total_duration = metric_data['Avail.Duration']['sum']
             ads_duration = metric_data['AdDecisionServer.Duration']['sum']
             
             if total_duration > 0:
                 # Override AdDecisionServer.FillRate with weighted calculation
                 weighted_ads_fill_rate = (ads_duration / total_duration) * 100
-                derived_metrics['AdDecisionServer.FillRate'] = {
+                metric_data['AdDecisionServer.FillRate'] = {
                     'average': round(weighted_ads_fill_rate, 1),
                     'sum': round(weighted_ads_fill_rate, 1)
                 }
-
+                
                 logger.debug("Calculated weighted AdDecisionServer.FillRate", extra={
                     "total_duration": total_duration,
                     "ads_duration": ads_duration,
@@ -309,13 +290,11 @@ def calculate_derived_metrics(metric_data: Dict, requested_metrics: List[str], l
                 })
         
         # Calculate Avail.ObservedFillRate (works for both HLS and DASH)
-        # Only calculate if explicitly requested in config
         has_observed_duration = 'Avail.ObservedDuration' in metric_data
         has_observed_filled = 'Avail.ObservedFilledDuration' in metric_data
         observed_duration_sum = metric_data.get('Avail.ObservedDuration', {}).get('sum', 0)
-        observed_fill_rate_requested = 'Avail.ObservedFillRate' in requested_metrics
-
-        if observed_fill_rate_requested and has_observed_duration and has_observed_filled and observed_duration_sum > 0:
+        
+        if has_observed_duration and has_observed_filled and observed_duration_sum > 0:
             observed_duration = metric_data['Avail.ObservedDuration']['sum']
             observed_filled_duration = metric_data['Avail.ObservedFilledDuration']['sum']
             
@@ -331,10 +310,13 @@ def calculate_derived_metrics(metric_data: Dict, requested_metrics: List[str], l
                     "observed_filled_duration": observed_filled_duration,
                     "observed_fill_rate": observed_fill_rate
                 })
-        elif observed_fill_rate_requested:
-            # Only log if metric was requested but couldn't be calculated
+        else:
+            # Always include ObservedFillRate with zeros for consistent output
+            derived_metrics['Avail.ObservedFillRate'] = {
+                'average': 0,
+                'sum': 0
+            }
             logger.debug("Insufficient data for observed fill rate calculation", extra={
-                "config_name": config_name,
                 "has_observed_duration": has_observed_duration,
                 "has_observed_filled": has_observed_filled,
                 "observed_duration_sum": observed_duration_sum
@@ -348,97 +330,9 @@ def calculate_derived_metrics(metric_data: Dict, requested_metrics: List[str], l
     
     return derived_metrics
 
-def calculate_config_status(metrics: Dict) -> tuple:
-    """Calculate overall status for a configuration.
-
-    Returns:
-        tuple: (status_level, status_text, issue_count)
-            status_level: 0=Healthy, 1=Info, 2=Warning, 3=Critical, 4=No Data
-            status_text: Human-readable status
-            issue_count: Number of warning/critical metrics
-    """
-
-    critical_count = 0
-    warning_count = 0
-    has_data = False
-
-    # Metrics that should trigger status (not informational)
-    STATUS_METRICS = [
-        'Avail.FillRate', 'AdDecisionServer.FillRate', 'Avail.ObservedFillRate',
-        'AdDecisionServer.Latency', 'GetManifest.Latency',
-        'AdDecisionServer.Errors', 'AdDecisionServer.Timeouts',
-        'GetManifest.Errors', 'Origin.Errors', 'Origin.Timeouts'
-    ]
-
-    for metric_name, data in metrics.items():
-        if metric_name not in STATUS_METRICS:
-            continue
-
-        if 'error' in data:
-            continue
-
-        avg = data.get('average', 0)
-        sum_val = data.get('sum', 0)
-
-        if avg > 0 or sum_val > 0:
-            has_data = True
-
-        # Check fill rates
-        if 'FillRate' in metric_name:
-            if avg == 0:
-                continue  # No data
-            elif avg < 70:
-                critical_count += 1
-            elif avg < 80:
-                warning_count += 1
-
-        # Check latencies
-        elif metric_name == 'AdDecisionServer.Latency':
-            if avg == 0:
-                continue
-            elif avg > 2000:
-                critical_count += 1
-            elif avg > 1000:
-                warning_count += 1
-
-        elif metric_name == 'GetManifest.Latency':
-            if avg == 0:
-                continue
-            elif avg > 500:
-                critical_count += 1
-            elif avg > 200:
-                warning_count += 1
-
-        # Check error counts
-        elif 'Errors' in metric_name or 'Timeouts' in metric_name:
-            if sum_val == 0:
-                continue
-            elif sum_val >= 1000:
-                critical_count += 1
-            elif sum_val >= 100:
-                warning_count += 1
-
-    # Determine overall status
-    if not has_data:
-        return (4, "⚪ No Data", 0)
-    elif critical_count > 0:
-        return (3, f"🔴 Critical ({critical_count})", critical_count)
-    elif warning_count > 0:
-        return (2, f"🟡 Warning ({warning_count})", warning_count)
-    else:
-        return (0, "✓ Healthy", 0)
-
 def generate_pdf_report(report_data: Dict, start_time, end_time) -> bytes:
-    """Generate PDF report with executive summary for large deployments.
-
-    For deployments with many channels (>10), generates:
-    - Page 1: Executive summary table showing all channels with overall status
-    - Following pages: Detailed metrics only for channels with issues (Warning/Critical)
-    - Healthy channels: Summary only (no detailed tables)
-
-    This keeps reports actionable and manageable even with 100+ channels.
-    """
-
+    """Generate PDF report"""
+    
     from io import BytesIO
     buffer = BytesIO()
     
@@ -474,19 +368,9 @@ def generate_pdf_report(report_data: Dict, start_time, end_time) -> bytes:
     
     story.append(title)
     story.append(Spacer(1, 0.2*inch))
-
-    # Calculate status for all configs
-    config_statuses = {}
-    for config_name, metrics in report_data.items():
-        status_level, status_text, issue_count = calculate_config_status(metrics)
-        config_statuses[config_name] = {
-            'level': status_level,
-            'text': status_text,
-            'issues': issue_count
-        }
-
-    # Executive summary for large deployments (>10 channels)
-    if len(report_data) > 10:
+    
+    # Executive summary if multiple configurations
+    if len(report_data) > 1:
         summary_style = ParagraphStyle(
             'Summary',
             parent=styles['Normal'],
@@ -500,81 +384,7 @@ def generate_pdf_report(report_data: Dict, start_time, end_time) -> bytes:
             borderPadding=10,
             backColor=colors.HexColor('#F8F9FA')
         )
-
-        critical_count = sum(1 for s in config_statuses.values() if s['level'] == 3)
-        warning_count = sum(1 for s in config_statuses.values() if s['level'] == 2)
-        healthy_count = sum(1 for s in config_statuses.values() if s['level'] == 0)
-
-        summary_text = (f"<b>Executive Summary:</b> {len(report_data)} channels monitored. "
-                       f"{critical_count} critical, {warning_count} warnings, {healthy_count} healthy. "
-                       f"Detailed metrics shown below for channels with issues.")
-        summary = Paragraph(summary_text, summary_style)
-        story.append(summary)
-        story.append(Spacer(1, 0.15*inch))
-
-        # Executive summary table
-        exec_header_style = ParagraphStyle(
-            'ExecHeader',
-            parent=styles['Heading3'],
-            fontSize=12,
-            textColor=colors.HexColor('#232F3E'),
-            spaceAfter=8
-        )
-        story.append(Paragraph("Channel Status Overview", exec_header_style))
-
-        # Build summary table
-        exec_table_data = [['Channel', 'Status', 'Issues']]
-        for config_name in sorted(config_statuses.keys(), key=lambda x: (-config_statuses[x]['level'], x)):
-            status_info = config_statuses[config_name]
-            exec_table_data.append([
-                config_name,
-                status_info['text'],
-                str(status_info['issues']) if status_info['issues'] > 0 else '-'
-            ])
-
-        exec_table = Table(exec_table_data, colWidths=[3*inch, 1.5*inch, 1*inch])
-        exec_table_style = [
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#232F3E')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('ALIGN', (2, 0), (2, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 10),
-            ('FONTSIZE', (0, 1), (-1, -1), 9),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8F9FA')]),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E5E5E5')),
-        ]
-
-        # Color-code status column
-        for i, row in enumerate(exec_table_data[1:], 1):
-            status = row[1]
-            if "Critical" in status:
-                exec_table_style.append(('TEXTCOLOR', (1, i), (1, i), colors.HexColor('#DC3545')))
-            elif "Warning" in status:
-                exec_table_style.append(('TEXTCOLOR', (1, i), (1, i), colors.HexColor('#FFC107')))
-            elif "Healthy" in status:
-                exec_table_style.append(('TEXTCOLOR', (1, i), (1, i), colors.HexColor('#28A745')))
-
-        exec_table.setStyle(TableStyle(exec_table_style))
-        story.append(exec_table)
-        story.append(Spacer(1, 0.25*inch))
-
-    elif len(report_data) > 1:
-        # Brief summary for small deployments
-        summary_style = ParagraphStyle(
-            'Summary',
-            parent=styles['Normal'],
-            fontSize=10,
-            textColor=colors.HexColor('#495057'),
-            leftIndent=20,
-            rightIndent=20,
-            spaceAfter=15,
-            borderWidth=1,
-            borderColor=colors.HexColor('#E5E5E5'),
-            borderPadding=10,
-            backColor=colors.HexColor('#F8F9FA')
-        )
-
+        
         summary_text = ("This report covers " + f"{len(report_data)}" + " MediaTailor "
                         "configuration(s). Each section provides detailed metrics "
                         "including fill rates, ad duration statistics, and system "
@@ -603,52 +413,19 @@ def generate_pdf_report(report_data: Dict, start_time, end_time) -> bytes:
     period = Paragraph(period_text, period_style)
     story.append(period)
     story.append(Spacer(1, 0.25*inch))
-
-    # For large deployments, show detailed metrics only for channels with issues
-    show_all_details = len(report_data) <= 10
-
-    if not show_all_details:
-        detail_header_style = ParagraphStyle(
-            'DetailHeader',
-            parent=styles['Heading2'],
-            fontSize=14,
-            textColor=colors.HexColor('#232F3E'),
-            spaceAfter=10,
-            spaceBefore=10
-        )
-        story.append(Paragraph("Detailed Metrics (Issues Only)", detail_header_style))
-
-        note_style = ParagraphStyle(
-            'Note',
-            parent=styles['Normal'],
-            fontSize=8,
-            textColor=colors.HexColor('#6C757D'),
-            leftIndent=10,
-            spaceAfter=15
-        )
-        story.append(Paragraph(
-            "For readability, only channels with warnings or critical issues are shown below. "
-            "Healthy channels are listed in the summary table above.",
-            note_style
-        ))
-
+    
     # Generate sections for each configuration
-    configs_shown = 0
-    for config_name, metrics in sorted(report_data.items(), key=lambda x: -config_statuses[x[0]]['level']):
-        status_info = config_statuses[config_name]
-
-        # For large deployments, skip healthy channels in details
-        if not show_all_details and status_info['level'] == 0:
-            continue
-
-        if configs_shown > 0:
+    for i, (config_name, metrics) in enumerate(report_data.items()):
+        if i > 0:
             story.append(Spacer(1, 0.3*inch))
-
-        story.extend(generate_pdf_config_section(config_name, metrics, styles, status_info['text']))
-        configs_shown += 1
+        
+        story.extend(generate_pdf_config_section(config_name, metrics, styles))
         
         if i < len(report_data) - 1:
             story.append(Spacer(1, 0.25*inch))
+    
+    # Add metrics descriptions at the bottom
+    story.extend(generate_metrics_descriptions_table(styles))
     
     # Footnote about locally calculated metrics
     footnote_style = ParagraphStyle(
@@ -666,11 +443,11 @@ def generate_pdf_report(report_data: Dict, start_time, end_time) -> bytes:
         backColor=colors.HexColor('#F8F9FA')
     )
     footnote_text = (
-        "Note: Fill rate metrics (Avail.FillRate, AdDecisionServer.FillRate, Avail.ObservedFillRate) use weighted "
-        "(sum-based) calculations for revenue accuracy: (total filled duration ÷ total duration) × 100. This differs "
-        "from CloudWatch's simple per-avail averages. Avail.ObservedFillRate is calculated locally from CloudWatch "
-        "component metrics to support both HLS and DASH (CloudWatch only emits it for HLS at CUE-IN). "
-        "For detailed metric definitions, see: https://docs.aws.amazon.com/mediatailor/latest/ug/monitoring-cloudwatch-metrics.html"
+        "Note: Avail.ObservedFillRate is calculated locally as (ObservedFilledDuration ÷ ObservedDuration) × 100. "
+        "AWS CloudWatch only emits this metric natively for HLS manifests (at CUE-IN). This report derives it from "
+        "the underlying CloudWatch metrics to provide coverage for both HLS and DASH streams. For HLS, values may "
+        "differ slightly from CloudWatch due to weighted (sum-based) vs simple (per-avail) averaging. "
+        "Ref: https://docs.aws.amazon.com/mediatailor/latest/ug/monitoring-cloudwatch-metrics.html"
     )
     story.append(Spacer(1, 0.2*inch))
     story.append(Paragraph(footnote_text, footnote_style))
@@ -692,12 +469,12 @@ def generate_pdf_report(report_data: Dict, start_time, end_time) -> bytes:
     buffer.seek(0)
     return buffer.getvalue()
 
-def generate_pdf_config_section(config_name: str, metrics: Dict, styles, overall_status: str = None) -> List:
+def generate_pdf_config_section(config_name: str, metrics: Dict, styles) -> List:
     """Generate PDF section for each configuration"""
-
+    
     elements = []
-
-    # Configuration header with professional styling and status
+    
+    # Configuration header with professional styling
     config_style = ParagraphStyle(
         'ConfigHeader',
         parent=styles['Heading2'],
@@ -709,64 +486,32 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles, overall
         borderPadding=6,
         backColor=colors.HexColor('#F8F9FA')
     )
-
-    header_text = f"Configuration: {config_name}"
-    if overall_status:
-        header_text += f"  —  {overall_status}"
-
-    elements.append(Paragraph(header_text, config_style))
+    
+    elements.append(Paragraph(f"Configuration: {config_name}", config_style))
     elements.append(Spacer(1, 0.1*inch))
     
-    # Define metric groups organized by troubleshooting scenario
-    # Groups are displayed in order, with inline descriptions for context
+    # Define metric groups by priority
     metric_groups = {
-        'Ad Decision Server Health': {
-            'description': 'Your ad server responsiveness and error rates. High latency (>1000ms) or errors indicate ADS configuration or network issues.',
-            'metrics': [
-                'AdDecisionServer.Latency',
-                'AdDecisionServer.Errors',
-                'AdDecisionServer.Timeouts',
-                'AdDecisionServer.Ads'
-            ]
-        },
-        'Ad Insertion Performance': {
-            'description': 'Fill rate and duration metrics showing how effectively ads are being inserted into breaks.',
-            'metrics': [
-                'Avail.FillRate',
-                'AdDecisionServer.FillRate',
-                'Avail.Duration',
-                'Avail.FilledDuration',
-                'AdDecisionServer.Duration'
-            ]
-        },
-        'Manifest Generation': {
-            'description': 'Performance metrics for manifest personalization. High latency (>200ms) affects playback startup time.',
-            'metrics': [
-                'GetManifest.Latency',
-                'GetManifest.Errors'
-            ]
-        },
-        'Origin Server Health': {
-            'description': 'Content origin server connectivity and performance. Errors indicate origin availability issues.',
-            'metrics': [
-                'Origin.Errors',
-                'Origin.Timeouts'
-            ]
-        },
-        'Observed Playback Metrics': {
-            'description': 'Actual playback behavior vs. planned. Differences indicate early CUE-IN (common in live content).',
-            'metrics': [
-                'Avail.ObservedDuration',
-                'Avail.ObservedFilledDuration',
-                'Avail.ObservedFillRate'
-            ]
-        },
-        'Volume & Impression Metrics': {
-            'description': 'Informational metrics showing ad impression counts and total ad volume.',
-            'metrics': [
-                'Avail.Impression'
-            ]
-        }
+        'Critical Performance Metrics': [
+            'Avail.FillRate', 
+            'AdDecisionServer.FillRate', 
+            'AdDecisionServer.Latency',
+            'GetManifest.Latency'
+        ],
+        'Planned Duration Metrics': [
+            'Avail.Duration', 'Avail.FilledDuration'
+        ],
+        'Observed Duration Metrics': [
+            'Avail.ObservedDuration', 'Avail.ObservedFilledDuration', 'Avail.ObservedFillRate'
+        ],
+        'Volume Metrics': [
+            'Avail.Impression',
+            'AdDecisionServer.Ads', 'AdDecisionServer.Duration'
+        ],
+        'Error & Health Metrics': [
+            'AdDecisionServer.Errors', 'AdDecisionServer.Timeouts',
+            'GetManifest.Errors', 'Origin.Errors', 'Origin.Timeouts'
+        ]
     }
     
     # Use metrics as-is (no renaming needed)
@@ -778,41 +523,22 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles, overall
     LATENCY_METRICS = ['AdDecisionServer.Latency', 'GetManifest.Latency']
     COUNT_METRICS = ['AdDecisionServer.Ads', 'AdDecisionServer.Errors', 'AdDecisionServer.Timeouts', 'Avail.Impression', 'GetManifest.Errors', 'Origin.Errors', 'Origin.Timeouts']
     
-    # Generate tables for each metric group (only show groups with metrics present)
-    for group_name, group_config in metric_groups.items():
-        metric_list = group_config['metrics']
-        group_description = group_config['description']
-
-        # Check if any metrics in this group are present in the data
-        has_metrics = any(metric in display_metrics for metric in metric_list)
-        if not has_metrics:
-            continue  # Skip empty groups
-
+    # Generate tables for each metric group
+    for group_name, metric_list in metric_groups.items():
         # Group header
         group_style = ParagraphStyle(
             'GroupHeader',
             parent=styles['Heading3'],
             fontSize=12,
             textColor=colors.HexColor('#495057'),
-            spaceAfter=4,
+            spaceAfter=8,
             spaceBefore=12
         )
         elements.append(Paragraph(group_name, group_style))
-
-        # Group description (inline context)
-        desc_style = ParagraphStyle(
-            'GroupDesc',
-            parent=styles['Normal'],
-            fontSize=8,
-            textColor=colors.HexColor('#6C757D'),
-            spaceAfter=8,
-            leftIndent=10
-        )
-        elements.append(Paragraph(group_description, desc_style))
-
+        
         # Create table for this group
         table_data = [['Metric', 'Value', 'Status']]
-
+        
         for metric in metric_list:
             if metric not in display_metrics:
                 continue
@@ -947,6 +673,81 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles, overall
     
     return elements
 
+def generate_metrics_descriptions_table(styles) -> List:
+    """Generate metrics descriptions table for bottom of PDF.
+    
+    Args:
+        styles: ReportLab StyleSheet object containing paragraph styles
+                for formatting the table content
+    
+    Returns:
+        List: List of ReportLab elements (Paragraph and Table) that make up
+              the metrics definitions section of the PDF report
+    """
+    
+    metric_descriptions = {
+        'Avail.FillRate': 'Weighted fill rate: (FilledDuration/Duration) × 100',
+        'Avail.Duration': 'Planned ad avail time from origin manifest',
+        'Avail.FilledDuration': 'Actual duration of ad breaks that were filled with ads',
+        'Avail.ObservedDuration': 'Actual duration of ad avails that occurred during playback',
+        'Avail.ObservedFilledDuration': 'Actual duration of ads that were observed during playback',
+        'Avail.ObservedFillRate': 'Locally calculated: (ObservedFilledDuration/ObservedDuration) × 100 (see footnote)',
+        'AdDecisionServer.FillRate': 'Weighted fill rate: (AdDecisionServer.Duration/Avail.Duration) × 100',
+        'AdDecisionServer.Ads': 'Number of ads returned by ADS',
+        'AdDecisionServer.Duration': 'Total duration of ads returned by ADS',
+        'AdDecisionServer.Latency': 'Response time in milliseconds for requests MediaTailor makes to ADS',
+        'AdDecisionServer.Errors': 'Number of non-HTTP 200, empty, and timed-out responses from ADS',
+        'AdDecisionServer.Timeouts': 'Number of timed-out requests to ADS',
+        'Avail.Impression': 'Number of ad impressions (increments when first segment requested)',
+        'GetManifest.Errors': 'Number of errors while MediaTailor was generating manifests',
+        'GetManifest.Latency': 'Response time in milliseconds for manifest generation',
+        'Origin.Errors': 'Origin server connectivity problems',
+        'Origin.Timeouts': 'Number of timed-out requests to origin server'
+    }
+    
+    elements = []
+    
+    # Section header
+    header_style = ParagraphStyle(
+        'DescHeader',
+        parent=styles['Heading2'],
+        fontSize=12,
+        textColor=colors.HexColor('#232F3E'),
+        spaceAfter=10,
+        spaceBefore=20
+    )
+    elements.append(Paragraph("Metrics Definitions", header_style))
+    
+    # Create descriptions table with optimized performance
+    normal_style = styles['Normal']  # Cache style lookup
+    table_data = [['Metric', 'Description']] + [
+        [metric, Paragraph(description, normal_style)]
+        for metric, description in metric_descriptions.items()
+    ]
+    
+    table = Table(table_data, colWidths=[2.2*inch, 4.3*inch])
+    
+    table_style = [
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#6C757D')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 9),
+        ('FONTSIZE', (0, 1), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, 0), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+        ('LEFTPADDING', (0, 0), (-1, -1), 5),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8F9FA')]),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E5E5E5')),
+    ]
+    
+    table.setStyle(TableStyle(table_style))
+    elements.append(table)
+    
+    return elements
 
 def send_email_with_pdf(pdf_data: bytes, recipients: List[str], logger, ses_client, sender_email: str = None):
     """Send email with PDF attachment via SES"""

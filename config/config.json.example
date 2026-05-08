@@ -4,10 +4,6 @@
     "your-mediatailor-config-2"
   ],
   "metrics": [
-    "_comment_metrics": "Only metrics listed here will be fetched from CloudWatch and displayed in the report.",
-    "_comment_derived": "Derived metrics (Avail.FillRate, AdDecisionServer.FillRate, Avail.ObservedFillRate) are ONLY calculated if explicitly included in this list.",
-    "_comment_workflow": "For direct campaigns without programmatic backfill, REMOVE fill rate metrics to avoid false alarms. See docs/TROUBLESHOOTING_WORKFLOWS.md",
-
     "Avail.FillRate",
     "Avail.Duration",
     "Avail.FilledDuration",
@@ -32,7 +28,6 @@
   "sender_email": "mediatailor-reports@yourdomain.com",
   "schedule": {
     "hour": "9",
-    "minute": "0",
-    "_comment": "UTC time. 9:00 UTC = 5:00 AM EST / 2:00 AM PST"
+    "minute": "0"
   }
 }

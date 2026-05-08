@@ -2,14 +2,6 @@
 
 Automated daily email reports for MediaTailor ad-fill rate metrics.
 
-## Key Features
-
-✅ **Config-Driven Metrics** - Only calculate and display metrics you explicitly configure (no unwanted alerts)  
-✅ **Scales to 200+ Channels** - Executive summary + issues-only filtering keeps reports manageable  
-✅ **Smart Alerting** - Configurable thresholds based on AWS recommendations and industry standards  
-✅ **Workflow-Specific** - Pre-configured metric sets for different ad delivery patterns  
-✅ **Comprehensive Docs** - Threshold rationale, troubleshooting workflows, and scaling best practices
-
 ## Quick Start
 
 1. **Install CDK**: `npm install -g aws-cdk`
@@ -19,20 +11,9 @@ Automated daily email reports for MediaTailor ad-fill rate metrics.
 
 ## Documentation
 
-### Getting Started
 - [📖 Installation Guide](docs/INSTALLATION_GUIDE.md) - Complete installation and setup instructions
 - [📋 Configuration Guide](docs/CONFIGURATION.md) - Setup and configuration options
-
-### Understanding Metrics & Alerts
 - [📊 Metrics Reference](docs/METRICS.md) - Available metrics and their meanings
-- [🎯 Thresholds Guide](docs/THRESHOLDS_GUIDE.md) - Why these alert thresholds? (NEW)
-- [🔧 Troubleshooting Workflows](docs/TROUBLESHOOTING_WORKFLOWS.md) - Metric configs by scenario (NEW)
-
-### Scaling & Performance
-- [📈 Scaling Guide](docs/SCALING_GUIDE.md) - Managing 100+ channels efficiently (NEW)
-- [📋 Executive Summary Example](docs/EXECUTIVE_SUMMARY_EXAMPLE.md) - Visual examples (NEW)
-
-### Advanced
 - [🧪 Testing Guide](docs/TESTING.md) - How to test the system
 - [🏗️ Architecture](docs/ARCHITECTURE.md) - System architecture details
 - [🔒 Security](docs/SECURITY.md) - Security measures and best practices

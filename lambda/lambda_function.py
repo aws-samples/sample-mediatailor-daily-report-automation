@@ -762,9 +762,10 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles, overall
             ]
         },
         'Volume & Impression Metrics': {
-            'description': 'Informational metrics showing ad impression counts and total ad volume.',
+            'description': 'Informational metrics showing ad impression counts, ads billed, and total ad volume.',
             'metrics': [
-                'Avail.Impression'
+                'Avail.Impression',
+                'AdsBilled'
             ]
         }
     }
@@ -776,7 +777,7 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles, overall
     RATE_METRICS = ['Avail.FillRate', 'AdDecisionServer.FillRate', 'Avail.ObservedFillRate']
     DURATION_METRICS = ['Avail.Duration', 'Avail.FilledDuration', 'Avail.ObservedDuration', 'Avail.ObservedFilledDuration', 'AdDecisionServer.Duration']
     LATENCY_METRICS = ['AdDecisionServer.Latency', 'GetManifest.Latency']
-    COUNT_METRICS = ['AdDecisionServer.Ads', 'AdDecisionServer.Errors', 'AdDecisionServer.Timeouts', 'Avail.Impression', 'GetManifest.Errors', 'Origin.Errors', 'Origin.Timeouts']
+    COUNT_METRICS = ['AdDecisionServer.Ads', 'AdDecisionServer.Errors', 'AdDecisionServer.Timeouts', 'Avail.Impression', 'AdsBilled', 'GetManifest.Errors', 'Origin.Errors', 'Origin.Timeouts']
     
     # Generate tables for each metric group (only show groups with metrics present)
     for group_name, group_config in metric_groups.items():
@@ -864,7 +865,7 @@ def generate_pdf_config_section(config_name: str, metrics: Dict, styles, overall
                 elif rate_percent < 80:
                     status_text = "🟡 Warning"
                 # else: ✓ Healthy (default)
-            elif metric in DURATION_METRICS or metric == 'Avail.Impression':
+            elif metric in DURATION_METRICS or metric in ['Avail.Impression', 'AdsBilled']:
                 # Duration and volume metrics are informational only
                 if sum_val == 0:
                     status_text = "⚪ No Data"

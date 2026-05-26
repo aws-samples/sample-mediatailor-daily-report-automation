@@ -18,6 +18,7 @@
     "AdDecisionServer.Errors",
     "AdDecisionServer.Timeouts",
     "Avail.Impression",
+    "AdsBilled",
     "Avail.ObservedDuration",
     "Avail.ObservedFilledDuration",
     "GetManifest.Errors",
